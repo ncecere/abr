@@ -91,6 +91,7 @@ export const books = sqliteTable(
     isbn10: text("isbn10"),
     isbn13: text("isbn13"),
     coverUrl: text("cover_url"),
+    coverPath: text("cover_path"),
     state: text("state").notNull().default("MISSING"),
     createdAt: integer("created_at", { mode: "timestamp" })
       .notNull()

@@ -11,10 +11,11 @@ describe("importFileForBook", () => {
   it("copies the first matching format and records metadata", async () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ebr-test-"));
 
+    const workId = `OL${Date.now()}`;
     const [book] = await db
       .insert(books)
       .values({
-        openLibraryWorkId: "OL1W",
+        openLibraryWorkId: workId,
         title: "Test Book",
         authorsJson: JSON.stringify(["Example Author"]),
         state: "MISSING",
@@ -39,5 +40,8 @@ describe("importFileForBook", () => {
       .where(eq(bookFiles.bookId, book.id));
     expect(files.length).toBe(1);
     expect(files[0].format).toBe("EPUB");
+
+    await db.delete(bookFiles).where(eq(bookFiles.bookId, book.id));
+    await db.delete(books).where(eq(books.id, book.id));
   });
 });

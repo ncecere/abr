@@ -18,9 +18,12 @@ describe("Open Library normalization", () => {
       title: "Neuromancer",
       description: { value: "Sprawl trilogy" },
       covers: [100],
+      first_publish_date: "1984",
     };
-    const normalized = normalizeWork(work, undefined);
+    const normalized = normalizeWork(work, undefined, ["William Gibson"]);
     expect(normalized.coverUrl).toContain("100-L.jpg");
     expect(normalized.description).toBe("Sprawl trilogy");
+    expect(normalized.publishYear).toBe(1984);
+    expect(normalized.authors).toEqual(["William Gibson"]);
   });
 });

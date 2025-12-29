@@ -1,11 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import slugify from "@sindresorhus/slugify";
 import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { bookFiles, books } from "@/db/schema";
 import { emitActivity } from "@/lib/activity";
 import { logger } from "@/lib/logger";
+import { getBookDirectory } from "@/lib/library/paths";
 
 export async function importFileForBook(
   options: {
@@ -27,11 +27,10 @@ export async function importFileForBook(
     const found = files.find((file) => format.extensions.some((ext) => file.toLowerCase().endsWith(`.${ext.toLowerCase()}`)));
     if (!found) continue;
 
-    const destinationDirectory = path.join(
+    const destinationDirectory = getBookDirectory(
+      JSON.parse(book.authorsJson ?? "[]"),
+      book.title,
       options.libraryRoot,
-      "ebook",
-      slugify(JSON.parse(book.authorsJson)[0] ?? "unknown-author"),
-      slugify(book.title),
     );
 
     await fs.mkdir(destinationDirectory, { recursive: true });

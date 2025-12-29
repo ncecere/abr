@@ -3,10 +3,10 @@ import path from "node:path";
 import { eq } from "drizzle-orm";
 import { env } from "@/config";
 import { db } from "@/db/client";
-import { formats, settings } from "@/db/schema";
+import { books, formats, settings } from "@/db/schema";
 import { logger } from "@/lib/logger";
 
-const DEFAULT_LIBRARY_ROOT = env.LIBRARY_ROOT ?? path.resolve("var", "library");
+export const DEFAULT_LIBRARY_ROOT = env.LIBRARY_ROOT ?? path.resolve("var", "library");
 
 const DEFAULT_FORMATS = [
   { name: "EPUB", extensions: ["epub"], priority: 0 },
@@ -40,6 +40,8 @@ export async function bootstrapDatabase() {
     );
     logger.info("seeded default ebook formats");
   }
+
+  await db.delete(books).where(eq(books.title, "Test Book"));
 }
 
 export async function ensureLibraryRootSync(libraryRoot?: string) {

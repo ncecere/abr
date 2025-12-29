@@ -18,7 +18,7 @@
 ## Settings semantics
 
 - **Port**: Updating the port toggles `restartRequired=true`. The app cannot restart itself; surface-level banner reminds you to restart the process/container after editing.
-- **Library root**: Changing the root ensures `${root}/ebook` exists immediately. Importer writes into `${root}/ebook/{Author}/{Title}`.
+- **Library root**: Changing the root ensures `${root}/ebook` exists immediately. Every new book pre-creates `${root}/ebook/{Author}/{Title}`, stores downloaded cover art there, and the importer later drops files into the same directory.
 - **Search interval**: Drives the recurring scheduler. Setting overly aggressive intervals may hit rate limits on Newznab/Open Library.
 - **Active downloader**: Exactly one download client can be active at a time. Jobs will no-op and log an error if the row disappears or is disabled.
 

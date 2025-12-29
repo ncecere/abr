@@ -51,9 +51,10 @@ export async function queryNewznab(
 
     const xml = await response.text();
     const parsed = parser.parse(xml) as Record<string, any>;
-    const items: Record<string, unknown>[] = parsed?.rss?.channel?.item ?? [];
+    const rawItems = parsed?.rss?.channel?.item ?? [];
+    const itemsArray = Array.isArray(rawItems) ? rawItems : rawItems ? [rawItems] : [];
 
-    return items.map((item) => normalizeItem(item));
+    return itemsArray.map((item) => normalizeItem(item));
   });
 }
 
