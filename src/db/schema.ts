@@ -16,7 +16,7 @@ export const downloadClients = sqliteTable("download_clients", {
   apiKey: text("api_key"),
   username: text("username"),
   password: text("password"),
-  category: text("category").notNull().default("ebooks"),
+  category: text("category").notNull().default("audiobooks"),
   enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
@@ -98,14 +98,17 @@ export const books = sqliteTable(
   "books",
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
-    openLibraryWorkId: text("openlibrary_work_id").notNull(),
-    openLibraryEditionId: text("openlibrary_edition_id"),
+    audibleAsin: text("audible_asin").notNull(),
+    audibleProductId: text("audible_product_id"),
     title: text("title").notNull(),
     authorsJson: text("authors_json").notNull(),
+    narratorsJson: text("narrators_json").notNull().default("[]"),
     publishYear: integer("publish_year"),
+    releaseDate: text("release_date"),
     description: text("description"),
-    isbn10: text("isbn10"),
-    isbn13: text("isbn13"),
+    language: text("language"),
+    runtimeSeconds: integer("runtime_seconds"),
+    sampleUrl: text("sample_url"),
     coverUrl: text("cover_url"),
     coverPath: text("cover_path"),
     state: text("state").notNull().default("MISSING"),
@@ -118,7 +121,7 @@ export const books = sqliteTable(
       .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
   },
   (table) => ({
-    workIdIdx: uniqueIndex("books_work_idx").on(table.openLibraryWorkId),
+    asinIdx: uniqueIndex("books_asin_idx").on(table.audibleAsin),
     stateIdx: index("books_state_idx").on(table.state),
   })
 );

@@ -2,7 +2,7 @@ import { books, indexers, formats } from "@/db/schema";
 import { queryNewznab } from "@/lib/services/newznab";
 import { MatchResult, scoreRelease } from "@/lib/matching";
 
-export const DEFAULT_EBOOK_CATEGORIES = [7000, 7010, 7020, 7040];
+export const DEFAULT_AUDIOBOOK_CATEGORIES = [3030, 3035, 3036, 3040];
 export const MAX_RELEASES_PER_INDEXER = 25;
 
 export type BookRecord = typeof books.$inferSelect;
@@ -24,16 +24,24 @@ export async function fetchReleasesAcrossIndexers(
   indexerList: IndexerRecord[],
   limitPerIndexer = 10,
 ) {
-  const searchQuery = buildSearchQuery(book);
+  const searchQueries = buildSearchQueries(book);
   const aggregated: IndexerRelease[] = [];
 
   for (const indexer of indexerList) {
     const categories = parseCategories(indexer.categories);
-    const releases = await queryNewznab(
-      { baseUrl: indexer.baseUrl, apiKey: indexer.apiKey, categories },
-      searchQuery,
-      limitPerIndexer,
-    );
+    let releases: Awaited<ReturnType<typeof queryNewznab>> = [];
+
+    for (const query of searchQueries) {
+      releases = await queryNewznab(
+        { baseUrl: indexer.baseUrl, apiKey: indexer.apiKey, categories },
+        query,
+        limitPerIndexer,
+      );
+      if (releases.length > 0) {
+        break;
+      }
+    }
+
     releases.forEach((release) => {
       aggregated.push({ indexer, release });
     });
@@ -63,7 +71,7 @@ export async function findBestReleaseMatch(
 
 export function parseCategories(raw: string | null) {
   if (!raw) {
-    return DEFAULT_EBOOK_CATEGORIES;
+    return DEFAULT_AUDIOBOOK_CATEGORIES;
   }
   try {
     const parsed = JSON.parse(raw);
@@ -71,20 +79,32 @@ export function parseCategories(raw: string | null) {
       const normalized = parsed
         .map((value) => Number(value))
         .filter((value) => !Number.isNaN(value) && value > 0);
-      return normalized.length ? normalized : DEFAULT_EBOOK_CATEGORIES;
+      return normalized.length ? normalized : DEFAULT_AUDIOBOOK_CATEGORIES;
     }
   } catch {
     // ignore JSON errors
   }
-  return DEFAULT_EBOOK_CATEGORIES;
+  return DEFAULT_AUDIOBOOK_CATEGORIES;
 }
 
-export function buildSearchQuery(book: BookRecord) {
+export function buildSearchQueries(book: BookRecord) {
   const authors = safeParseAuthors(book.authorsJson);
   const normalizedTitle = normalizeQueryPart(book.title);
   const normalizedAuthor = normalizeQueryPart(authors[0]);
-  const parts = [normalizedTitle, normalizedAuthor].filter(Boolean);
-  return parts.join(" ") || book.title;
+  const normalizedAsin = normalizeQueryPart(book.audibleAsin);
+  const rawTitle = (book.title ?? "").trim();
+
+  const queries = [
+    [normalizedTitle, normalizedAsin].filter(Boolean).join(" "),
+    [normalizedTitle, normalizedAuthor].filter(Boolean).join(" "),
+    normalizedTitle,
+    normalizedAsin,
+    rawTitle,
+  ]
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+
+  return Array.from(new Set(queries));
 }
 
 function safeParseAuthors(raw: string | null) {

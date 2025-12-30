@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { success, problem } from "@/lib/http/responses";
 import { queryNewznab } from "@/lib/services/newznab";
 
-const DEFAULT_EBOOK_CATEGORIES = [7000, 7010, 7020, 7040];
+const DEFAULT_AUDIOBOOK_CATEGORIES = [3030, 3035, 3036, 3040];
 
 export const runtime = "nodejs";
 
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
         apiKey: payload.apiKey,
         categories,
       },
-      payload?.query ?? "ebook",
+      payload?.query ?? "audiobook",
       1,
     );
 
@@ -40,5 +40,5 @@ function normalizeCategories(value: unknown) {
     : [];
 
   const valid = fromInput.filter((entry) => !Number.isNaN(entry) && entry > 0);
-  return Array.from(new Set([...DEFAULT_EBOOK_CATEGORIES, ...valid]));
+  return Array.from(new Set([...DEFAULT_AUDIOBOOK_CATEGORIES, ...valid]));
 }

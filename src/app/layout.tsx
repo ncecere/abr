@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "EBR",
-  description: "Self-hosted ebook automation",
+  description: "Self-hosted audiobook automation",
 };
 
 export default async function RootLayout({

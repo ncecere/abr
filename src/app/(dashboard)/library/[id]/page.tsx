@@ -14,23 +14,48 @@ export const metadata: Metadata = {
   title: "EBR · Book detail",
 };
 
-export default async function LibraryDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
+const ACTIVITY_PAGE_SIZE = 10;
+
+export default async function LibraryDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ page?: string }>;
+}) {
+  const [{ id }, search] = await Promise.all([params, searchParams]);
   const bookId = Number(id);
   const book = await getBook(bookId);
   if (!book) {
     notFound();
   }
+  const currentPage = Math.max(1, Number(search?.page ?? "1") || 1);
+  const offset = (currentPage - 1) * ACTIVITY_PAGE_SIZE;
+  const limit = ACTIVITY_PAGE_SIZE + 1;
   const version = (book.updatedAt ?? book.createdAt)?.valueOf?.() ?? Date.now();
 
   const authors = JSON.parse(book.authorsJson ?? "[]") as string[];
+  const narrators = JSON.parse(book.narratorsJson ?? "[]") as string[];
   const files = await db.select().from(bookFiles).where(eq(bookFiles.bookId, bookId));
-  const events = await db
+  const rawEvents = await db
     .select()
     .from(activityEvents)
     .where(eq(activityEvents.bookId, bookId))
     .orderBy(desc(activityEvents.ts))
-    .limit(10);
+    .limit(limit)
+    .offset(offset);
+  const hasNextPage = rawEvents.length > ACTIVITY_PAGE_SIZE;
+  const events = rawEvents.slice(0, ACTIVITY_PAGE_SIZE);
+  const hasPrevPage = currentPage > 1;
+  const basePath = `/library/${book.id}`;
+  const prevHref = currentPage <= 2 ? basePath : `${basePath}?page=${currentPage - 1}`;
+  const nextHref = `${basePath}?page=${currentPage + 1}`;
+  const startEntry = events.length ? offset + 1 : 0;
+  const endEntry = offset + events.length;
+  const paginationLinkClass = (enabled: boolean) =>
+    enabled
+      ? "text-sm font-medium text-primary hover:underline"
+      : "text-sm text-muted-foreground pointer-events-none";
 
   return (
     <section className="space-y-8">
@@ -63,22 +88,48 @@ export default async function LibraryDetailPage({ params }: { params: Promise<{ 
           </div>
           <Badge variant={book.state === "AVAILABLE" ? "default" : "secondary"}>{book.state}</Badge>
           <dl className="grid gap-3 text-sm">
+            <div>
+              <dt className="text-muted-foreground">Audible ASIN</dt>
+              <dd>{book.audibleAsin}</dd>
+            </div>
             {book.publishYear && (
               <div>
-                <dt className="text-muted-foreground">Publish year</dt>
+                <dt className="text-muted-foreground">Year</dt>
                 <dd>{book.publishYear}</dd>
               </div>
             )}
-            {book.isbn10 && (
+            {book.releaseDate && (
               <div>
-                <dt className="text-muted-foreground">ISBN-10</dt>
-                <dd>{book.isbn10}</dd>
+                <dt className="text-muted-foreground">Release date</dt>
+                <dd>{formatReleaseDate(book.releaseDate)}</dd>
               </div>
             )}
-            {book.isbn13 && (
+            {narrators.length > 0 && (
               <div>
-                <dt className="text-muted-foreground">ISBN-13</dt>
-                <dd>{book.isbn13}</dd>
+                <dt className="text-muted-foreground">Narrators</dt>
+                <dd>{narrators.join(", ")}</dd>
+              </div>
+            )}
+            {book.runtimeSeconds && (
+              <div>
+                <dt className="text-muted-foreground">Runtime</dt>
+                <dd>{formatRuntime(book.runtimeSeconds)}</dd>
+              </div>
+            )}
+            {book.language && (
+              <div>
+                <dt className="text-muted-foreground">Language</dt>
+                <dd>{book.language.toUpperCase()}</dd>
+              </div>
+            )}
+            {book.sampleUrl && (
+              <div>
+                <dt className="text-muted-foreground">Sample clip</dt>
+                <dd>
+                  <a className="text-primary underline" href={book.sampleUrl} target="_blank" rel="noreferrer">
+                    Listen preview
+                  </a>
+                </dd>
               </div>
             )}
             {files.length > 0 && (
@@ -121,8 +172,44 @@ export default async function LibraryDetailPage({ params }: { params: Promise<{ 
               </div>
             );
           })}
+          {(hasPrevPage || hasNextPage) && (
+            <div className="flex flex-col gap-2 border-t pt-3 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+              <span>
+                {events.length ? `Showing ${startEntry}-${endEntry}` : "No events to display"}
+              </span>
+              <div className="flex gap-4">
+                <Link href={prevHref} aria-disabled={!hasPrevPage} className={paginationLinkClass(hasPrevPage)}>
+                  Previous
+                </Link>
+                <Link href={nextHref} aria-disabled={!hasNextPage} className={paginationLinkClass(hasNextPage)}>
+                  Next
+                </Link>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </section>
   );
+}
+
+function formatRuntime(seconds?: number | null) {
+  if (!seconds || seconds <= 0) {
+    return "Unknown";
+  }
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.round((seconds % 3600) / 60);
+  const parts: string[] = [];
+  if (hours) parts.push(`${hours}h`);
+  if (minutes) parts.push(`${minutes}m`);
+  return parts.join(" ") || `${Math.round(seconds / 60)}m`;
+}
+
+function formatReleaseDate(value?: string | null) {
+  if (!value) return "Unknown";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.valueOf())) {
+    return value;
+  }
+  return parsed.toLocaleDateString();
 }

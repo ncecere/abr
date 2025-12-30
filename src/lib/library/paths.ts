@@ -9,5 +9,5 @@ export function getBookDirectory(authors: string[], title: string, libraryRoot: 
   const primaryAuthor = authors[0] ?? "unknown-author";
   const authorFolder = sanitizeSegment(primaryAuthor);
   const titleFolder = sanitizeSegment(title);
-  return path.join(libraryRoot, "ebook", authorFolder, titleFolder);
+  return path.join(libraryRoot, "audiobook", authorFolder, titleFolder);
 }

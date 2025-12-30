@@ -11,9 +11,10 @@ const MIGRATIONS_FOLDER = path.join(process.cwd(), "drizzle");
 export const DEFAULT_LIBRARY_ROOT = env.LIBRARY_ROOT ?? path.resolve("var", "library");
 
 const DEFAULT_FORMATS = [
-  { name: "EPUB", extensions: ["epub"], priority: 0 },
-  { name: "MOBI", extensions: ["mobi"], priority: 1 },
-  { name: "PDF", extensions: ["pdf"], priority: 2 },
+  { name: "M4B", extensions: ["m4b"], priority: 0 },
+  { name: "MP3", extensions: ["mp3"], priority: 1 },
+  { name: "FLAC", extensions: ["flac"], priority: 2 },
+  { name: "OPUS", extensions: ["opus"], priority: 3 },
 ];
 
 export async function bootstrapDatabase() {
@@ -47,7 +48,7 @@ export async function bootstrapDatabase() {
         priority: format.priority,
       })),
     );
-    logger.info("seeded default ebook formats");
+    logger.info("seeded default audiobook formats");
   }
 
   await db.delete(books).where(eq(books.title, "Test Book"));
@@ -55,7 +56,7 @@ export async function bootstrapDatabase() {
 
 export async function ensureLibraryRootSync(libraryRoot?: string) {
   const root = libraryRoot ?? (await getLibraryRoot());
-  ensureDirectory(path.join(root, "ebook"));
+  ensureDirectory(path.join(root, "audiobook"));
 }
 
 async function getLibraryRoot() {

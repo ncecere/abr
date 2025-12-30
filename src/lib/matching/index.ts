@@ -2,9 +2,9 @@ import slugify from "@sindresorhus/slugify";
 import { Format } from "@/db/schema";
 import { Book } from "@/db/schema";
 
-const AUDIOBOOK_TERMS = [/audiobook/i, /mp3/i, /flac/i, /m4b/i];
+const AUDIOBOOK_TERMS = [/audiobook/i, /m4b/i, /flac/i, /mp3/i, /unabridged/i, /kbps/i];
+const EBOOK_TERMS = [/ebook/i, /epub/i, /mobi/i, /pdf/i, /azw/i];
 const COMIC_TERMS = [/comic/i, /cbr/i, /cbz/i];
-const ISBN_REGEX = /(97(8|9))?\d{9}(\d|X)/g;
 
 export type ReleaseCandidate = {
   guid: string;
@@ -27,7 +27,7 @@ export function scoreRelease(
   release: ReleaseCandidate,
   formats: Format[],
 ): MatchResult | null {
-  if (isAudioOrComic(release.title)) {
+  if (isComicOrEbook(release.title)) {
     return null;
   }
 
@@ -35,13 +35,14 @@ export function scoreRelease(
   const normalizedReleaseTitle = normalize(release.title);
   const authorScore = computeAuthorScore(book);
   const titleScore = similarity(normalizedBookTitle, normalizedReleaseTitle);
-  const isbnScore = findIsbnMatch(book, release.title) ? 0.4 : 0;
+  const asinScore = release.title.toLowerCase().includes(book.audibleAsin.toLowerCase()) ? 0.4 : 0;
+  const audioHintScore = hasAudiobookHint(release.title) ? 0.2 : 0;
   const detectedFormat = detectFormat(release.title, formats);
   const formatScore = detectedFormat ? 0.3 + (1 / (detectedFormat.priority + 1)) * 0.1 : 0;
 
-  const totalScore = Number((authorScore + titleScore + isbnScore + formatScore).toFixed(2));
+  const totalScore = Number((authorScore + titleScore + asinScore + audioHintScore + formatScore).toFixed(2));
 
-  if (totalScore < 0.45) {
+  if (totalScore < 0.35) {
     return null;
   }
 
@@ -70,11 +71,6 @@ function computeAuthorScore(book: Book) {
   return 0.2;
 }
 
-function findIsbnMatch(book: Book, releaseTitle: string) {
-  const matches = releaseTitle.match(ISBN_REGEX) ?? [];
-  return matches.some((isbn) => isbn === book.isbn10 || isbn === book.isbn13);
-}
-
 function detectFormat(title: string, formats: Format[]) {
   return formats.find((format) => {
     const extensions: string[] = JSON.parse(format.extensions ?? "[]");
@@ -82,6 +78,10 @@ function detectFormat(title: string, formats: Format[]) {
   });
 }
 
-function isAudioOrComic(title: string) {
-  return AUDIOBOOK_TERMS.some((regex) => regex.test(title)) || COMIC_TERMS.some((regex) => regex.test(title));
+function hasAudiobookHint(title: string) {
+  return AUDIOBOOK_TERMS.some((regex) => regex.test(title));
+}
+
+function isComicOrEbook(title: string) {
+  return EBOOK_TERMS.some((regex) => regex.test(title)) || COMIC_TERMS.some((regex) => regex.test(title));
 }

@@ -1,0 +1,9 @@
+node_modules
+.next
+var
+.git
+Dockerfile
+bun.lockb
+*.log
+dist
+coverage

@@ -159,7 +159,7 @@ export function ManualSearchModalProvider({ children }: { children: ReactNode })
                     </Card>
                   );
                 })}
-                {state.results.length === 0 && !state.loading && (
+                {state.results.length === 0 && !state.loading && (!state.status || state.status === "Searching indexers…") && (
                   <p className="text-sm text-muted-foreground">No results yet.</p>
                 )}
               </div>

@@ -30,16 +30,19 @@ services:
       - "3000:3000"
     volumes:
       - ./var/data:/app/var/data
-      - ./downloads:/app/var/downloads
-      - ./library:/app/var/library
+      - ./var/downloads:/app/var/downloads
+      - ./var/library:/app/var/library
     environment:
       - DATABASE_PATH=/app/var/data/ebr.sqlite
       - DOWNLOADS_DIR=/app/var/downloads
       - LIBRARY_ROOT=/app/var/library
+      - AUDIBLE_CLIENT_ID=${AUDIBLE_CLIENT_ID}
+      - AUDIBLE_CLIENT_SECRET=${AUDIBLE_CLIENT_SECRET}
 ```
 
-- Mount downloads + library directories so SABnzbd/NZBGet and the importer see the same filesystem.
+- Mount downloads + library directories so SABnzbd/NZBGet and the importer see the same filesystem (`/app/var/library/audiobook/...`).
 - Port binding is still managed by your orchestrator. Updating the UI port requires restarting the container with the new mapping.
+- If you use Audible OAuth, store the credentials in your orchestrator's secret manager. Otherwise you can omit them and rely on the public endpoints.
 
 ## Health checks
 

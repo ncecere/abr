@@ -1,0 +1,21 @@
+services:
+  ebr:
+    build: .
+    container_name: ebr_app
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_PATH=/app/var/data/ebr.sqlite
+      - DOWNLOADS_DIR=/app/var/downloads
+      - LIBRARY_ROOT=/app/var/library
+    volumes:
+      - ebr_data:/app/var/data
+      - ebr_library:/app/var/library
+      - ebr_downloads:/app/var/downloads
+    restart: unless-stopped
+
+volumes:
+  ebr_data:
+  ebr_library:
+  ebr_downloads:

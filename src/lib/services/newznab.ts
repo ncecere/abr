@@ -32,7 +32,11 @@ export async function queryNewznab(
   }
 
   const url = new URL(config.baseUrl);
-  url.pathname = "/api";
+  const trimmed = url.pathname.endsWith("/") && url.pathname !== "/" ? url.pathname.slice(0, -1) : url.pathname;
+  if (!trimmed.endsWith("/api")) {
+    const normalized = trimmed === "/" ? "" : trimmed;
+    url.pathname = `${normalized}/api`;
+  }
   url.searchParams.set("t", "search");
   url.searchParams.set("q", query);
   url.searchParams.set("apikey", config.apiKey);

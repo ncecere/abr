@@ -11,13 +11,14 @@ describe("importFileForBook", () => {
   it("copies the first matching format and records metadata", async () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ebr-test-"));
 
-    const workId = `OL${Date.now()}`;
+    const asin = `ASIN${Date.now()}`;
     const [book] = await db
       .insert(books)
       .values({
-        openLibraryWorkId: workId,
+        audibleAsin: asin,
         title: "Test Book",
         authorsJson: JSON.stringify(["Example Author"]),
+        narratorsJson: JSON.stringify(["Narrator"]),
         state: "MISSING",
       })
       .returning();
@@ -25,7 +26,7 @@ describe("importFileForBook", () => {
     const downloadDir = path.join(tmpDir, "download");
     await fs.mkdir(downloadDir, { recursive: true });
     const sourceFile = path.join(downloadDir, "Test Book.epub");
-    await fs.writeFile(sourceFile, "ebook");
+    await fs.writeFile(sourceFile, "audiobook");
 
     await importFileForBook({
       bookId: book.id,

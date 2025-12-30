@@ -23,7 +23,7 @@ export type SettingsPanelProps = {
   downloadClients: DownloadClient[];
 };
 
-const DEFAULT_EBOOK_CATEGORIES = [7000, 7010, 7020, 7040];
+const DEFAULT_AUDIOBOOK_CATEGORIES = [3030, 3035, 3036, 3040];
 
 const tabs = [
   { key: "server", label: "Server" },
@@ -55,6 +55,21 @@ type DownloaderDraft = {
   category: string;
 };
 
+type FormatDraft = {
+  id?: number;
+  name: string;
+  extensions: string;
+  priority: number;
+  enabled: boolean;
+};
+
+type PathMappingDraft = {
+  id?: number;
+  downloadClientId: number | null;
+  remotePath: string;
+  localPath: string;
+};
+
 export function SettingsPanel({ settings, indexers: initialIndexers, formats: initialFormats, downloadClients: initialClients }: SettingsPanelProps) {
   const [form, setForm] = useState({
     serverPort: settings.serverPort,
@@ -67,6 +82,9 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
   const [downloadClients, setDownloadClients] = useState(initialClients);
   const [status, setStatus] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>("server");
+  const activeDownloader = form.activeDownloaderClientId
+    ? downloadClients.find((client) => client.id === form.activeDownloaderClientId)
+    : undefined;
   const [isIndexerModalOpen, setIndexerModalOpen] = useState(false);
   const [selectedMappingClientId, setSelectedMappingClientId] = useState<number | null>(
     initialClients[0]?.id ?? null,
@@ -74,18 +92,37 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
   const [pathMappingsByClient, setPathMappingsByClient] = useState<
     Record<number, DownloadClientPathMapping[]>
   >({});
-  const [pathMappingDraft, setPathMappingDraft] = useState({ remotePath: "", localPath: "" });
-  const [pathMappingStatus, setPathMappingStatus] = useState<string | null>(null);
+  const [isFormatModalOpen, setFormatModalOpen] = useState(false);
+  const [formatModalMode, setFormatModalMode] = useState<"create" | "edit">("create");
+  const [formatDraft, setFormatDraft] = useState<FormatDraft>({
+    name: "",
+    extensions: "",
+    priority: formats.length,
+    enabled: true,
+  });
+  const [formatModalStatus, setFormatModalStatus] = useState<string | null>(null);
+  const [formatListStatus, setFormatListStatus] = useState<string | null>(null);
   const [pathMappingListStatus, setPathMappingListStatus] = useState<string | null>(null);
+  const [isPathMappingModalOpen, setPathMappingModalOpen] = useState(false);
+  const [pathMappingModalMode, setPathMappingModalMode] = useState<"create" | "edit">("create");
+  const [pathMappingDraft, setPathMappingDraft] = useState<PathMappingDraft>({
+    downloadClientId: selectedMappingClientId ?? downloadClients[0]?.id ?? null,
+    remotePath: "",
+    localPath: "",
+  });
+  const [pathMappingModalStatus, setPathMappingModalStatus] = useState<string | null>(null);
   const selectedPathMappings = selectedMappingClientId
     ? pathMappingsByClient[selectedMappingClientId]
+    : undefined;
+  const selectedMappingClient = selectedMappingClientId
+    ? downloadClients.find((client) => client.id === selectedMappingClientId)
     : undefined;
   const [indexerModalMode, setIndexerModalMode] = useState<"create" | "edit">("create");
   const [indexerDraft, setIndexerDraft] = useState<IndexerDraft>(() => ({
     name: "",
     baseUrl: "",
     apiKey: "",
-    categories: DEFAULT_EBOOK_CATEGORIES.join(", "),
+    categories: DEFAULT_AUDIOBOOK_CATEGORIES.join(", "),
     priority: initialIndexers.length,
   }));
   const [indexerModalStatus, setIndexerModalStatus] = useState<string | null>(null);
@@ -101,7 +138,8 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
     apiKey: "",
     username: "",
     password: "",
-    category: "ebooks",
+      category: "audiobooks",
+
   }));
   const [downloaderModalStatus, setDownloaderModalStatus] = useState<string | null>(null);
   const [downloaderTestStatus, setDownloaderTestStatus] = useState<string | null>(null);
@@ -112,12 +150,12 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
       .split(",")
       .map((entry) => Number(entry.trim()))
       .filter((num) => !Number.isNaN(num) && num > 0);
-    return Array.from(new Set([...DEFAULT_EBOOK_CATEGORIES, ...parsed]));
+    return Array.from(new Set([...DEFAULT_AUDIOBOOK_CATEGORIES, ...parsed]));
   };
 
   const parseStoredCategories = (raw?: string | null) => {
     if (!raw) {
-      return [...DEFAULT_EBOOK_CATEGORIES];
+      return [...DEFAULT_AUDIOBOOK_CATEGORIES];
     }
     try {
       const parsed = JSON.parse(raw);
@@ -130,7 +168,7 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
     if (typeof raw === "string") {
       return parseCategoriesInput(raw);
     }
-    return [...DEFAULT_EBOOK_CATEGORIES];
+    return [...DEFAULT_AUDIOBOOK_CATEGORIES];
   };
 
   const fetchPathMappings = async (clientId: number, silent = false) => {
@@ -152,23 +190,29 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
   };
 
   useEffect(() => {
-    setPathMappingDraft({ remotePath: "", localPath: "" });
-    setPathMappingStatus(null);
     if (!selectedMappingClientId) {
       return;
     }
-    if (selectedPathMappings) {
+    if (pathMappingsByClient[selectedMappingClientId]) {
       return;
     }
     fetchPathMappings(selectedMappingClientId, true);
-  }, [selectedMappingClientId, selectedPathMappings]);
+  }, [selectedMappingClientId]);
+
+  useEffect(() => {
+    setPathMappingDraft((prev) => ({
+      ...prev,
+      downloadClientId: selectedMappingClientId ?? downloadClients[0]?.id ?? null,
+    }));
+  }, [selectedMappingClientId, downloadClients]);
 
   const openCreateIndexerModal = () => {
     setIndexerDraft({
       name: "",
       baseUrl: "",
       apiKey: "",
-      categories: DEFAULT_EBOOK_CATEGORIES.join(", "),
+    categories: DEFAULT_AUDIOBOOK_CATEGORIES.join(", "),
+
       priority: indexers.length,
     });
     setIndexerModalMode("create");
@@ -317,28 +361,95 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
     setStatus(response.ok ? "Settings saved" : "Failed to save settings");
   };
 
-  const handleCreateFormat = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const formElement = event.currentTarget;
-    const formData = new FormData(formElement);
-    const payload = {
-      name: formData.get("name"),
-      extensions: String(formData.get("extensions"))
-        .split(",")
-        .map((value) => value.trim())
-        .filter(Boolean),
-      priority: Number(formData.get("priority")),
+  const openCreateFormatModal = () => {
+    setFormatDraft({
+      id: undefined,
+      name: "",
+      extensions: "",
+      priority: formats.length,
       enabled: true,
-    };
-    const response = await fetch("/api/formats", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
     });
-    if (!response.ok) return;
-    const { data } = await response.json();
-    setFormats((current) => [...current, data]);
-    formElement.reset();
+    setFormatModalMode("create");
+    setFormatModalStatus(null);
+    setFormatModalOpen(true);
+  };
+
+  const openEditFormatModal = (format: Format) => {
+    setFormatDraft({
+      id: format.id,
+      name: format.name,
+      extensions: JSON.parse(format.extensions ?? "[]").join(", "),
+      priority: format.priority ?? 0,
+      enabled: Boolean(format.enabled),
+    });
+    setFormatModalMode("edit");
+    setFormatModalStatus(null);
+    setFormatModalOpen(true);
+  };
+
+  const handleFormatDraftChange = (field: keyof FormatDraft, value: string | number | boolean) => {
+    setFormatDraft((prev) => ({
+      ...prev,
+      [field]: field === "priority" ? Number(value) || 0 : value,
+    }));
+  };
+
+  const handleSaveFormat = async () => {
+    if (!formatDraft.name.trim()) {
+      setFormatModalStatus("Format name is required");
+      return;
+    }
+    const extensions = formatDraft.extensions
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (!extensions.length) {
+      setFormatModalStatus("Add at least one extension");
+      return;
+    }
+    setFormatModalStatus(formatModalMode === "create" ? "Creating format…" : "Saving format…");
+    const payload = {
+      name: formatDraft.name.trim(),
+      extensions,
+      priority: Number.isFinite(formatDraft.priority) ? formatDraft.priority : formats.length,
+      enabled: formatDraft.enabled,
+    };
+    try {
+      const response = await fetch(formatDraft.id ? `/api/formats/${formatDraft.id}` : "/api/formats", {
+        method: formatDraft.id ? "PUT" : "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.detail ?? "Request failed");
+      }
+      const { data } = await response.json();
+      setFormats((current) =>
+        (formatDraft.id
+          ? current.map((format) => (format.id === data.id ? data : format))
+          : [...current, data]
+        ).sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0)),
+      );
+      setFormatModalOpen(false);
+    } catch (error) {
+      setFormatModalStatus(error instanceof Error ? error.message : "Failed to save format");
+    }
+  };
+
+  const handleDeleteFormat = async (format: Format) => {
+    setFormatListStatus(`Deleting ${format.name}…`);
+    try {
+      const response = await fetch(`/api/formats/${format.id}`, { method: "DELETE" });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.detail ?? "Delete failed");
+      }
+      setFormats((current) => current.filter((entry) => entry.id !== format.id));
+      setFormatListStatus(`${format.name} deleted`);
+    } catch (error) {
+      setFormatListStatus(error instanceof Error ? error.message : "Failed to delete format");
+    }
   };
 
   const openCreateDownloaderModal = () => {
@@ -350,7 +461,8 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
       apiKey: "",
       username: "",
       password: "",
-      category: "ebooks",
+    category: "audiobooks",
+
     });
     setDownloaderModalMode("create");
     setDownloaderModalStatus(null);
@@ -368,7 +480,7 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
       apiKey: client.apiKey ?? "",
       username: client.username ?? "",
       password: client.password ?? "",
-      category: client.category ?? "ebooks",
+      category: client.category ?? "audiobooks",
     });
     setDownloaderModalMode("edit");
     setDownloaderModalStatus(null);
@@ -380,10 +492,20 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
     setDownloaderModalOpen(false);
   };
 
-  const handleDownloaderDraftChange = (field: keyof DownloaderDraft, value: string) => {
+  const handleDownloaderDraftChange = (
+    field: keyof DownloaderDraft,
+    value: string | number | boolean | null,
+  ) => {
     setDownloaderDraft((prev) => ({
       ...prev,
-      [field]: field === "port" ? Number(value) || 0 : value,
+      [field]:
+        field === "port"
+          ? Number(value ?? 0) || 0
+          : typeof value === "boolean"
+            ? value
+            : typeof value === "number"
+              ? value
+              : value ?? "",
     }));
   };
 
@@ -402,7 +524,7 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
       apiKey: downloaderDraft.apiKey?.trim() || undefined,
       username: downloaderDraft.username?.trim() || undefined,
       password: downloaderDraft.password?.trim() || undefined,
-      category: downloaderDraft.category.trim() || "ebooks",
+      category: downloaderDraft.category.trim() || "audiobooks",
       enabled: true,
     };
 
@@ -515,47 +637,86 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
     }
   };
 
-  const handlePathMappingDraftChange = (field: keyof typeof pathMappingDraft, value: string) => {
-    setPathMappingDraft((prev) => ({ ...prev, [field]: value }));
+  const openCreatePathMappingModal = () => {
+    setPathMappingDraft({
+      id: undefined,
+      downloadClientId: selectedMappingClientId ?? downloadClients[0]?.id ?? null,
+      remotePath: "",
+      localPath: "",
+    });
+    setPathMappingModalMode("create");
+    setPathMappingModalStatus(null);
+    setPathMappingModalOpen(true);
   };
 
-  const handleAddPathMapping = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!selectedMappingClientId) {
-      setPathMappingStatus("Select a download client first");
+  const openEditPathMappingModal = (clientId: number, mapping: DownloadClientPathMapping) => {
+    setPathMappingDraft({
+      id: mapping.id,
+      downloadClientId: clientId,
+      remotePath: mapping.remotePath,
+      localPath: mapping.localPath,
+    });
+    setPathMappingModalMode("edit");
+    setPathMappingModalStatus(null);
+    setPathMappingModalOpen(true);
+  };
+
+
+  const handleSavePathMapping = async () => {
+    if (!pathMappingDraft.downloadClientId) {
+      setPathMappingModalStatus("Select a download client");
       return;
     }
     const remotePath = pathMappingDraft.remotePath.trim();
     const localPath = pathMappingDraft.localPath.trim();
     if (!remotePath || !localPath) {
-      setPathMappingStatus("Remote and local paths are required");
+      setPathMappingModalStatus("Remote and local paths are required");
       return;
     }
-    setPathMappingStatus("Saving path mapping…");
+    setPathMappingModalStatus(pathMappingModalMode === "create" ? "Saving path mapping…" : "Updating path mapping…");
+    const clientId = pathMappingDraft.downloadClientId;
+    const payload = {
+      downloadClientId: clientId,
+      remotePath,
+      localPath,
+    };
     try {
-      const response = await fetch(`/api/download-clients/${selectedMappingClientId}/path-mappings`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ remotePath, localPath }),
-      });
+      const response = await fetch(
+        pathMappingDraft.id
+          ? `/api/download-clients/path-mappings/${pathMappingDraft.id}`
+          : `/api/download-clients/${clientId}/path-mappings`,
+        {
+          method: pathMappingDraft.id ? "PUT" : "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
       if (!response.ok) {
         const detail = await response.json().catch(() => null);
         throw new Error(detail?.detail ?? "Request failed");
       }
       const { data } = await response.json();
-      setPathMappingsByClient((prev) => ({
-        ...prev,
-        [selectedMappingClientId]: [...(prev[selectedMappingClientId] ?? []), data],
-      }));
-      setPathMappingDraft({ remotePath: "", localPath: "" });
-      setPathMappingStatus("Mapping saved");
+      setPathMappingsByClient((prev) => {
+        const next = { ...prev };
+        const targetId = data.downloadClientId;
+        if (pathMappingDraft.id) {
+          for (const key of Object.keys(next)) {
+            const numericKey = Number(key);
+            if (next[numericKey]?.some((mapping) => mapping.id === data.id)) {
+              next[numericKey] = next[numericKey].filter((mapping) => mapping.id !== data.id);
+            }
+          }
+        }
+        next[targetId] = [...(next[targetId] ?? []), data];
+        return next;
+      });
+      setPathMappingModalOpen(false);
     } catch (error) {
-      setPathMappingStatus(error instanceof Error ? error.message : "Failed to save mapping");
+      setPathMappingModalStatus(error instanceof Error ? error.message : "Failed to save mapping");
     }
   };
 
-  const handleDeletePathMapping = async (mappingId: number) => {
-    if (!selectedMappingClientId) return;
+  const handleDeletePathMapping = async (clientId: number, mappingId: number) => {
     setPathMappingListStatus("Removing mapping…");
     try {
       const response = await fetch(`/api/download-clients/path-mappings/${mappingId}`, { method: "DELETE" });
@@ -565,7 +726,7 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
       }
       setPathMappingsByClient((prev) => ({
         ...prev,
-        [selectedMappingClientId]: (prev[selectedMappingClientId] ?? []).filter((mapping) => mapping.id !== mappingId),
+        [clientId]: (prev[clientId] ?? []).filter((mapping) => mapping.id !== mappingId),
       }));
       setPathMappingListStatus(null);
     } catch (error) {
@@ -637,7 +798,7 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
                   }
                 >
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue>{activeDownloader?.name ?? "Select a client"}</SelectValue>
                   </SelectTrigger>
 
                   <SelectContent>
@@ -665,7 +826,7 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 className="text-lg font-semibold">Indexers</h3>
-              <p className="text-sm text-muted-foreground">Manage Newznab-compatible sources for ebook searches.</p>
+              <p className="text-sm text-muted-foreground">Manage Newznab-compatible sources for audiobook searches.</p>
             </div>
             <Button onClick={openCreateIndexerModal}>Add Indexer</Button>
           </div>
@@ -715,31 +876,51 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
       )}
 
       {activeTab === "formats" && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Formats</CardTitle>
-            <CardDescription>Supported ebook extensions.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <ul className="text-sm text-muted-foreground">
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-semibold">Formats</h3>
+              <p className="text-sm text-muted-foreground">Supported audiobook formats.</p>
+            </div>
+            <Button onClick={openCreateFormatModal}>Add Format</Button>
+          </div>
+          {formatListStatus && <p className="text-sm text-muted-foreground">{formatListStatus}</p>}
+          {formats.length === 0 ? (
+            <Card>
+              <CardContent className="py-6 text-sm text-muted-foreground">No formats configured.</CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
               {formats.map((format) => (
-                <li key={format.id}>
-                  {format.name} · {JSON.parse(format.extensions).join(", ")} (priority {format.priority})
-                </li>
+                <Card key={format.id}>
+                  <CardHeader className="flex flex-row items-start justify-between gap-3">
+                    <div>
+                      <CardTitle>{format.name}</CardTitle>
+                      <CardDescription>Priority {format.priority ?? 0}</CardDescription>
+                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-muted-foreground/20 bg-muted/50 text-muted-foreground transition hover:border-primary/40 hover:text-primary">
+                        <MoreHorizontal className="h-4 w-4" />
+                        <span className="sr-only">Format actions</span>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => openEditFormatModal(format)}>Edit</DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => handleDeleteFormat(format)} variant="destructive">
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </CardHeader>
+                  <CardContent className="space-y-1 text-sm text-muted-foreground">
+                    <p>Extensions: {JSON.parse(format.extensions ?? "[]").join(", ")}</p>
+                    <p>Status: {format.enabled ? "Enabled" : "Disabled"}</p>
+                  </CardContent>
+                </Card>
               ))}
-            </ul>
-            <form onSubmit={handleCreateFormat} className="grid gap-2 md:grid-cols-2">
-              <Input name="name" placeholder="Format name" required />
-              <Input name="extensions" placeholder="Extensions (comma separated)" required />
-              <Input name="priority" type="number" placeholder="Priority" defaultValue={formats.length} required />
-              <div className="md:col-span-2">
-                <Button type="submit" size="sm">
-                  Add format
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
+            </div>
+          )}
+        </div>
       )}
 
       {activeTab === "downloaders" && (
@@ -783,94 +964,81 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
                   </DropdownMenu>
                 </CardHeader>
                 <CardContent className="space-y-1 text-sm text-muted-foreground">
-                  <p>Category: {client.category ?? "ebooks"}</p>
+                  <p>Category: {client.category ?? "audiobooks"}</p>
                   <p>API key: {client.apiKey ? "••••••••" : "—"}</p>
                 </CardContent>
               </Card>
             ))}
           </div>
           <Card>
-            <CardHeader>
-              <CardTitle>Remote path mappings</CardTitle>
-              <CardDescription>Translate downloader paths to local filesystem locations.</CardDescription>
+            <CardHeader className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <CardTitle>Remote path mappings</CardTitle>
+                  <CardDescription>Translate downloader paths to local filesystem locations.</CardDescription>
+                </div>
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+                  <Select
+                    value={selectedMappingClientId ? String(selectedMappingClientId) : ""}
+                    onValueChange={(value) => setSelectedMappingClientId(value ? Number(value) : null)}
+                  >
+                    <SelectTrigger className="sm:w-64">
+                      <SelectValue>{selectedMappingClient?.name ?? "Select a client"}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {downloadClients.map((client) => (
+                          <SelectItem key={client.id} value={String(client.id)}>
+                            {client.name}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                  <Button onClick={openCreatePathMappingModal} disabled={!downloadClients.length}>
+                    Add Mapping
+                  </Button>
+                </div>
+              </div>
+              {pathMappingListStatus && <p className="text-sm text-muted-foreground">{pathMappingListStatus}</p>}
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent>
               {downloadClients.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Add a download client to configure path mappings.</p>
+              ) : !selectedMappingClientId ? (
+                <p className="text-sm text-muted-foreground">Select a download client to view mappings.</p>
+              ) : (selectedPathMappings ?? []).length === 0 ? (
+                <p className="text-sm text-muted-foreground">No path mappings defined for this client.</p>
               ) : (
-                <div className="space-y-4">
-                  <div>
-                    <Label>Download client</Label>
-                    <Select
-                      value={selectedMappingClientId ? String(selectedMappingClientId) : ""}
-                      onValueChange={(value) => setSelectedMappingClientId(value ? Number(value) : null)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          {downloadClients.map((client) => (
-                            <SelectItem key={client.id} value={String(client.id)}>
-                              {client.name}
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {pathMappingListStatus && (
-                    <p className="text-sm text-muted-foreground">{pathMappingListStatus}</p>
-                  )}
-                  <div className="space-y-2">
-                    {(selectedPathMappings ?? []).length === 0 ? (
-                      <p className="text-sm text-muted-foreground">No path mappings defined.</p>
-                    ) : (
-                      selectedPathMappings?.map((mapping) => (
-                        <div
-                          key={mapping.id}
-                          className="flex flex-wrap items-center justify-between gap-3 rounded border px-3 py-2 text-sm"
-                        >
-                          <div>
-                            <p className="font-medium">{mapping.remotePath}</p>
-                            <p className="text-xs text-muted-foreground">{mapping.localPath}</p>
-                          </div>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleDeletePathMapping(mapping.id)}
-                          >
-                            Remove
-                          </Button>
+                <div className="grid gap-3">
+                  {selectedPathMappings?.map((mapping) => (
+                    <Card key={mapping.id}>
+                      <CardHeader className="flex flex-row items-start justify-between gap-3">
+                        <div>
+                          <CardTitle className="text-base">{mapping.remotePath}</CardTitle>
+                          <CardDescription>{mapping.localPath}</CardDescription>
                         </div>
-                      ))
-                    )}
-                  </div>
-                  <form className="grid gap-3 md:grid-cols-2" onSubmit={handleAddPathMapping}>
-                    <div>
-                      <Label>Remote path</Label>
-                      <Input
-                        value={pathMappingDraft.remotePath}
-                        onChange={(event) => handlePathMappingDraftChange("remotePath", event.target.value)}
-                        placeholder="/downloads/incomplete"
-                      />
-                    </div>
-                    <div>
-                      <Label>Local path</Label>
-                      <Input
-                        value={pathMappingDraft.localPath}
-                        onChange={(event) => handlePathMappingDraftChange("localPath", event.target.value)}
-                        placeholder="/mnt/storage/downloads"
-                      />
-                    </div>
-                    <div className="md:col-span-2 flex flex-wrap items-center gap-3">
-                      <Button type="submit" size="sm" disabled={!selectedMappingClientId}>
-                        Add Mapping
-                      </Button>
-                      {pathMappingStatus && <span className="text-sm text-muted-foreground">{pathMappingStatus}</span>}
-                    </div>
-                  </form>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-muted-foreground/20 bg-muted/50 text-muted-foreground transition hover:border-primary/40 hover:text-primary">
+                            <MoreHorizontal className="h-4 w-4" />
+                            <span className="sr-only">Path mapping actions</span>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => openEditPathMappingModal(selectedMappingClientId, mapping)}>
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={() => handleDeletePathMapping(selectedMappingClientId, mapping.id)}
+                              variant="destructive"
+                            >
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </CardHeader>
+                    </Card>
+                  ))}
                 </div>
               )}
             </CardContent>
@@ -886,7 +1054,7 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
                 {indexerModalMode === "create" ? "Add Indexer" : "Edit Indexer"}
               </h3>
               <p className="text-sm text-muted-foreground">
-                {indexerModalStatus ?? "Provide the details for your ebook indexer."}
+                {indexerModalStatus ?? "Provide the details for your audiobook indexer."}
               </p>
             </div>
             <form
@@ -939,7 +1107,7 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
                     placeholder="7000, 7010, 7020, 7040"
                   />
                   <p className="mt-1 text-xs text-muted-foreground">
-                    These categories are combined with the default ebook set 7000/7010/7020/7040 automatically.
+                    These categories are combined with the default audiobook set 3030/3035/3036/3040 automatically.
                   </p>
 
               </div>
@@ -977,7 +1145,7 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
                 {downloaderModalMode === "create" ? "Add Download Client" : "Edit Download Client"}
               </h3>
               <p className="text-sm text-muted-foreground">
-                {downloaderModalStatus ?? "Configure a SABnzbd or NZBGet endpoint."}
+                {downloaderModalStatus ?? "Provide the settings for your download client."}
               </p>
             </div>
             <form
@@ -990,28 +1158,11 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
               <div className="grid gap-3 md:grid-cols-2">
                 <div>
                   <Label>Name</Label>
-                  <Input
-                    value={downloaderDraft.name}
-                    onChange={(event) => handleDownloaderDraftChange("name", event.target.value)}
-                    required
-                  />
+                  <Input value={downloaderDraft.name} onChange={(event) => handleDownloaderDraftChange("name", event.target.value)} />
                 </div>
-                <div>
-                  <Label>Port</Label>
-                  <Input
-                    type="number"
-                    value={downloaderDraft.port}
-                    onChange={(event) => handleDownloaderDraftChange("port", event.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="grid gap-3 md:grid-cols-2">
                 <div>
                   <Label>Type</Label>
-                  <Select
-                    value={downloaderDraft.type}
-                    onValueChange={(value) => handleDownloaderDraftChange("type", value ?? downloaderDraft.type)}
-                  >
+                  <Select value={downloaderDraft.type} onValueChange={(value) => handleDownloaderDraftChange("type", value)}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -1022,6 +1173,40 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
                   </Select>
                 </div>
                 <div>
+                  <Label>Host</Label>
+                  <Input value={downloaderDraft.host} onChange={(event) => handleDownloaderDraftChange("host", event.target.value)} />
+                </div>
+                <div>
+                  <Label>Port</Label>
+                  <Input
+                    type="number"
+                    value={downloaderDraft.port}
+                    onChange={(event) => handleDownloaderDraftChange("port", event.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label>API key</Label>
+                  <Input
+                    value={downloaderDraft.apiKey ?? ""}
+                    onChange={(event) => handleDownloaderDraftChange("apiKey", event.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label>Username</Label>
+                  <Input
+                    value={downloaderDraft.username ?? ""}
+                    onChange={(event) => handleDownloaderDraftChange("username", event.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label>Password</Label>
+                  <Input
+                    type="password"
+                    value={downloaderDraft.password ?? ""}
+                    onChange={(event) => handleDownloaderDraftChange("password", event.target.value)}
+                  />
+                </div>
+                <div>
                   <Label>Category</Label>
                   <Input
                     value={downloaderDraft.category}
@@ -1029,58 +1214,171 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
                   />
                 </div>
               </div>
-              <div>
-                <Label>Host</Label>
-                <Input
-                  value={downloaderDraft.host}
-                  onChange={(event) => handleDownloaderDraftChange("host", event.target.value)}
-                  placeholder="http://localhost"
-                  required
-                />
+              <div className="flex flex-wrap items-center gap-3">
+                <Button type="submit">Save</Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => handleTestDownloaderDraft()}
+                  disabled={!downloaderDraft.host}
+                >
+                  Test Connection
+                </Button>
+                {downloaderModalStatus && <span className="text-sm text-muted-foreground">{downloaderModalStatus}</span>}
+                {downloaderTestStatus && <span className="text-sm text-muted-foreground">{downloaderTestStatus}</span>}
               </div>
-              {downloaderDraft.type === "sabnzbd" && (
-                <div>
-                  <Label>API key</Label>
+              <div className="flex justify-end">
+                <Button type="button" variant="ghost" onClick={closeDownloaderModal}>
+                  Close
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {isFormatModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 py-8">
+          <div className="w-full max-w-lg rounded-2xl border bg-background p-6 shadow-2xl">
+            <div className="mb-4 space-y-1">
+              <h3 className="text-xl font-semibold">
+                {formatModalMode === "create" ? "Add Format" : "Edit Format"}
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                {formatModalStatus ?? "Define the audiobook format and extensions."}
+              </p>
+            </div>
+            <form
+              className="space-y-4"
+              onSubmit={(event) => {
+                event.preventDefault();
+                handleSaveFormat();
+              }}
+            >
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="md:col-span-2">
+                  <Label htmlFor="format-name">Name</Label>
                   <Input
-                    placeholder="API key"
-                    value={downloaderDraft.apiKey ?? ""}
-                    onChange={(event) => handleDownloaderDraftChange("apiKey", String(event.target.value ?? ""))}
+                    id="format-name"
+                    value={formatDraft.name}
+                    onChange={(event) => handleFormatDraftChange("name", event.target.value)}
+                    placeholder="EPUB"
+                    required
                   />
                 </div>
-              )}
-              {downloaderDraft.type === "nzbget" && (
+                <div className="md:col-span-2">
+                  <Label htmlFor="format-ext">Extensions (comma separated)</Label>
+                  <Input
+                    id="format-ext"
+                    value={formatDraft.extensions}
+                    onChange={(event) => handleFormatDraftChange("extensions", event.target.value)}
+                    placeholder="epub, mobi"
+                    required
+                  />
+                </div>
                 <div>
-                  <Label>Username & Password</Label>
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <Input
-                      placeholder="Username"
-                      value={downloaderDraft.username ?? ""}
-                      onChange={(event) => handleDownloaderDraftChange("username", String(event.target.value ?? ""))}
-                    />
-                    <Input
-                      placeholder="Password"
-                      type="password"
-                      value={downloaderDraft.password ?? ""}
-                      onChange={(event) => handleDownloaderDraftChange("password", String(event.target.value ?? ""))}
-                    />
-                  </div>
+                  <Label htmlFor="format-priority">Priority</Label>
+                  <Input
+                    id="format-priority"
+                    type="number"
+                    value={formatDraft.priority}
+                    onChange={(event) => handleFormatDraftChange("priority", event.target.value)}
+                  />
                 </div>
-              )}
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <Button type="button" variant="secondary" onClick={handleTestDownloaderDraft}>
-                    Test
-                  </Button>
-                  {downloaderTestStatus && <span className="text-sm text-muted-foreground">{downloaderTestStatus}</span>}
+                <div className="flex items-center gap-2 pt-6">
+                  <input
+                    id="format-enabled"
+                    type="checkbox"
+                    className="h-4 w-4"
+                    checked={formatDraft.enabled}
+                    onChange={(event) => handleFormatDraftChange("enabled", event.target.checked)}
+                  />
+                  <Label htmlFor="format-enabled">Enabled</Label>
                 </div>
-                <div className="flex gap-2">
-                  <Button type="button" variant="outline" onClick={closeDownloaderModal}>
-                    Cancel
-                  </Button>
-                  <Button type="submit">
-                    {downloaderModalMode === "create" ? "Create" : "Save"}
-                  </Button>
-                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="ghost" onClick={() => setFormatModalOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit">Save</Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {isPathMappingModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 py-8">
+          <div className="w-full max-w-lg rounded-2xl border bg-background p-6 shadow-2xl">
+            <div className="mb-4 space-y-1">
+              <h3 className="text-xl font-semibold">
+                {pathMappingModalMode === "create" ? "Add Remote Path Mapping" : "Edit Remote Path Mapping"}
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                {pathMappingModalStatus ?? "Map downloader paths to local storage locations."}
+              </p>
+            </div>
+            <form
+              className="space-y-4"
+              onSubmit={(event) => {
+                event.preventDefault();
+                handleSavePathMapping();
+              }}
+            >
+              <div>
+                <Label>Download client</Label>
+                <Select
+                  value={pathMappingDraft.downloadClientId ? String(pathMappingDraft.downloadClientId) : ""}
+                  onValueChange={(value) =>
+                    setPathMappingDraft((prev) => ({
+                      ...prev,
+                      downloadClientId: value ? Number(value) : null,
+                    }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue>
+                      {pathMappingDraft.downloadClientId
+                        ? downloadClients.find((client) => client.id === pathMappingDraft.downloadClientId)?.name ?? "Select a client"
+                        : "Select a client"}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {downloadClients.map((client) => (
+                        <SelectItem key={client.id} value={String(client.id)}>
+                          {client.name}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Remote path</Label>
+                <Input
+                  value={pathMappingDraft.remotePath}
+                  onChange={(event) =>
+                    setPathMappingDraft((prev) => ({ ...prev, remotePath: event.target.value }))
+                  }
+                  placeholder="/downloads/complete"
+                />
+              </div>
+              <div>
+                <Label>Local path</Label>
+                <Input
+                  value={pathMappingDraft.localPath}
+                  onChange={(event) =>
+                    setPathMappingDraft((prev) => ({ ...prev, localPath: event.target.value }))
+                  }
+                  placeholder="/mnt/storage/downloads"
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="ghost" onClick={() => setPathMappingModalOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit">Save</Button>
               </div>
             </form>
           </div>

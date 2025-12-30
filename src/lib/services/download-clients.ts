@@ -71,6 +71,20 @@ export async function createDownloadClientPathMapping(downloadClientId: number, 
   return created;
 }
 
+export async function updateDownloadClientPathMapping(id: number, payload: unknown) {
+  const data = downloadClientPathMappingSchema.partial().parse(payload);
+  const [updated] = await db
+    .update(downloadClientPathMappings)
+    .set({
+      ...(typeof data.downloadClientId === "number" ? { downloadClientId: data.downloadClientId } : {}),
+      ...(data.remotePath ? { remotePath: data.remotePath.trim() } : {}),
+      ...(data.localPath ? { localPath: data.localPath.trim() } : {}),
+    })
+    .where(eq(downloadClientPathMappings.id, id))
+    .returning();
+  return updated;
+}
+
 export async function deleteDownloadClientPathMapping(id: number) {
   await db.delete(downloadClientPathMappings).where(eq(downloadClientPathMappings.id, id));
 }

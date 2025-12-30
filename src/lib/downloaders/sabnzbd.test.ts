@@ -17,7 +17,7 @@ describe("SabnzbdClient", () => {
       host: "http://localhost",
       port: 8080,
       apiKey: "abc",
-      category: "ebooks",
+      category: "audiobooks",
     });
     const id = await client.enqueue("https://example/nzb", { title: "Book", bookId: 1 });
     expect(id).toBe("SAB-1");
@@ -36,7 +36,7 @@ describe("SabnzbdClient", () => {
       host: "http://localhost",
       port: 8080,
       apiKey: "abc",
-      category: "ebooks",
+      category: "audiobooks",
     });
     const status = await client.getStatus("abc");
     expect(status.status).toBe("downloading");

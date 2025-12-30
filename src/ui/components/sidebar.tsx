@@ -22,8 +22,8 @@ export function Sidebar({ restartRequired }: { restartRequired: boolean }) {
         <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
           EBR
         </p>
-        <p className="text-lg font-bold">Ebook Robot</p>
-        <p className="text-sm text-muted-foreground">Self-hosted library automation</p>
+        <p className="text-lg font-bold">Audiobook Robot</p>
+        <p className="text-sm text-muted-foreground">Self-hosted audiobook automation</p>
         {restartRequired && (
           <Badge variant="destructive" className="mt-3">
             Restart required

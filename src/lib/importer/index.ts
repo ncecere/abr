@@ -55,7 +55,7 @@ export async function importFileForBook(
 
     await emitActivity("IMPORT_COMPLETED", `Imported file for ${book.title}`, book.id);
     await emitActivity("BOOK_AVAILABLE", `${book.title} is now available`, book.id);
-    logger.info({ bookId: book.id, destinationPath }, "imported ebook");
+    logger.info({ bookId: book.id, destinationPath }, "imported audiobook");
     return destinationPath;
   }
 

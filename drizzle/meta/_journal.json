@@ -22,6 +22,13 @@
       "when": 1767058459413,
       "tag": "0002_remote_path_mappings",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1767070733000,
+      "tag": "0003_audiobook_overhaul",
+      "breakpoints": true
     }
   ]
 }

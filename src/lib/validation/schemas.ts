@@ -32,18 +32,19 @@ export const downloadClientPayloadSchema = z.object({
   apiKey: z.string().optional(),
   username: z.string().optional(),
   password: z.string().optional(),
-  category: z.string().min(1).default("ebooks"),
+  category: z.string().min(1).default("audiobooks"),
   enabled: z.boolean().default(true),
 });
 
 export const downloadClientPathMappingSchema = z.object({
+  downloadClientId: z.number().int().positive().optional(),
   remotePath: z.string().min(1),
   localPath: z.string().min(1),
 });
 
 export const addBookSchema = z.object({
-  workId: z.string().min(1),
-  editionId: z.string().min(1).optional(),
+  asin: z.string().min(1),
+  productId: z.string().min(1).optional(),
 });
 
 export type SettingsUpdateInput = z.infer<typeof settingsUpdateSchema>;
