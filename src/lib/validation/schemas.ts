@@ -36,6 +36,11 @@ export const downloadClientPayloadSchema = z.object({
   enabled: z.boolean().default(true),
 });
 
+export const downloadClientPathMappingSchema = z.object({
+  remotePath: z.string().min(1),
+  localPath: z.string().min(1),
+});
+
 export const addBookSchema = z.object({
   workId: z.string().min(1),
   editionId: z.string().min(1).optional(),
@@ -45,4 +50,5 @@ export type SettingsUpdateInput = z.infer<typeof settingsUpdateSchema>;
 export type IndexerInput = z.infer<typeof indexerPayloadSchema>;
 export type FormatInput = z.infer<typeof formatPayloadSchema>;
 export type DownloadClientInput = z.infer<typeof downloadClientPayloadSchema>;
+export type DownloadClientPathMappingInput = z.infer<typeof downloadClientPathMappingSchema>;
 export type AddBookInput = z.infer<typeof addBookSchema>;

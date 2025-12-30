@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { success, problem } from "@/lib/http/responses";
 import { queryNewznab } from "@/lib/services/newznab";
 
-const DEFAULT_EBOOK_CATEGORIES = [8000, 8010, 8020, 8040];
+const DEFAULT_EBOOK_CATEGORIES = [7000, 7010, 7020, 7040];
 
 export const runtime = "nodejs";
 

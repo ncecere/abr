@@ -27,6 +27,22 @@ export const downloadClients = sqliteTable("download_clients", {
     .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
 });
 
+export const downloadClientPathMappings = sqliteTable("download_client_path_mappings", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  downloadClientId: integer("download_client_id")
+    .references(() => downloadClients.id, { onDelete: "cascade" })
+    .notNull(),
+  remotePath: text("remote_path").notNull(),
+  localPath: text("local_path").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`)
+    .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
+});
+
 export const settings = sqliteTable("settings", {
   id: integer("id").primaryKey().$default(() => 1),
   serverPort: integer("server_port").notNull().default(3000),
@@ -193,6 +209,7 @@ export type InsertBook = InferInsertModel<typeof books>;
 export type Format = InferSelectModel<typeof formats>;
 export type Indexer = InferSelectModel<typeof indexers>;
 export type DownloadClient = InferSelectModel<typeof downloadClients>;
+export type DownloadClientPathMapping = InferSelectModel<typeof downloadClientPathMappings>;
 export type ActivityEvent = InferSelectModel<typeof activityEvents>;
 export type Job = InferSelectModel<typeof jobs>;
 export type Release = InferSelectModel<typeof releases>;

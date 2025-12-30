@@ -1,12 +1,14 @@
 import { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { eq, desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { getBook } from "@/lib/services/books";
 import { db } from "@/db/client";
-import { activityEvents, bookFiles } from "@/db/schema";
+import { activityEvents, books, bookFiles } from "@/db/schema";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BookQuickActions } from "@/ui/components/book-quick-actions";
+
 
 export const metadata: Metadata = {
   title: "EBR · Book detail",
@@ -47,11 +49,14 @@ export default async function LibraryDetailPage({ params }: { params: Promise<{ 
           )}
         </div>
         <div className="flex-1 space-y-4">
-          <div>
-            <Link href="/library" className="text-sm text-muted-foreground hover:underline">
-              ← Back to Library
-            </Link>
-            <h1 className="mt-2 text-3xl font-semibold">{book.title}</h1>
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <Link href="/library" className="text-sm text-muted-foreground hover:underline">
+                ← Back to Library
+              </Link>
+              <BookQuickActions bookId={book.id} bookTitle={book.title} />
+            </div>
+            <h1 className="text-3xl font-semibold">{book.title}</h1>
             <p className="text-muted-foreground">
               {authors.length ? authors.join(", ") : "Unknown author"}
             </p>
@@ -104,14 +109,18 @@ export default async function LibraryDetailPage({ params }: { params: Promise<{ 
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
           {events.length === 0 && <p className="text-muted-foreground">No events for this book yet.</p>}
-          {events.map((event) => (
-            <div key={event.id} className="border-l-2 border-primary pl-3">
-              <p className="text-muted-foreground text-xs">
-                {new Date(event.ts).toLocaleString()} · {event.type}
-              </p>
-              <p>{event.message}</p>
-            </div>
-          ))}
+          {events.map((event) => {
+            const dateValue = event.ts ? new Date(event.ts) : null;
+            const formatted = dateValue && !Number.isNaN(dateValue.valueOf()) ? dateValue.toLocaleString() : "Recently";
+            return (
+              <div key={event.id} className="border-l-2 border-primary pl-3">
+                <p className="text-muted-foreground text-xs">
+                  {formatted} · {event.type}
+                </p>
+                <p>{event.message}</p>
+              </div>
+            );
+          })}
         </CardContent>
       </Card>
     </section>

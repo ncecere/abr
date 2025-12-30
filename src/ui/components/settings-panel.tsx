@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -14,7 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal } from "lucide-react";
-import { Settings, Indexer, Format, DownloadClient } from "@/db/schema";
+import { Settings, Indexer, Format, DownloadClient, DownloadClientPathMapping } from "@/db/schema";
 
 export type SettingsPanelProps = {
   settings: Settings;
@@ -23,7 +23,7 @@ export type SettingsPanelProps = {
   downloadClients: DownloadClient[];
 };
 
-const DEFAULT_EBOOK_CATEGORIES = [8000, 8010, 8020, 8040];
+const DEFAULT_EBOOK_CATEGORIES = [7000, 7010, 7020, 7040];
 
 const tabs = [
   { key: "server", label: "Server" },
@@ -43,6 +43,18 @@ type IndexerDraft = {
   priority: number;
 };
 
+type DownloaderDraft = {
+  id?: number;
+  name: string;
+  type: string;
+  host: string;
+  port: number;
+  apiKey?: string;
+  username?: string;
+  password?: string;
+  category: string;
+};
+
 export function SettingsPanel({ settings, indexers: initialIndexers, formats: initialFormats, downloadClients: initialClients }: SettingsPanelProps) {
   const [form, setForm] = useState({
     serverPort: settings.serverPort,
@@ -56,6 +68,18 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
   const [status, setStatus] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>("server");
   const [isIndexerModalOpen, setIndexerModalOpen] = useState(false);
+  const [selectedMappingClientId, setSelectedMappingClientId] = useState<number | null>(
+    initialClients[0]?.id ?? null,
+  );
+  const [pathMappingsByClient, setPathMappingsByClient] = useState<
+    Record<number, DownloadClientPathMapping[]>
+  >({});
+  const [pathMappingDraft, setPathMappingDraft] = useState({ remotePath: "", localPath: "" });
+  const [pathMappingStatus, setPathMappingStatus] = useState<string | null>(null);
+  const [pathMappingListStatus, setPathMappingListStatus] = useState<string | null>(null);
+  const selectedPathMappings = selectedMappingClientId
+    ? pathMappingsByClient[selectedMappingClientId]
+    : undefined;
   const [indexerModalMode, setIndexerModalMode] = useState<"create" | "edit">("create");
   const [indexerDraft, setIndexerDraft] = useState<IndexerDraft>(() => ({
     name: "",
@@ -67,6 +91,21 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
   const [indexerModalStatus, setIndexerModalStatus] = useState<string | null>(null);
   const [indexerTestStatus, setIndexerTestStatus] = useState<string | null>(null);
   const [indexerListStatus, setIndexerListStatus] = useState<string | null>(null);
+  const [isDownloaderModalOpen, setDownloaderModalOpen] = useState(false);
+  const [downloaderModalMode, setDownloaderModalMode] = useState<"create" | "edit">("create");
+  const [downloaderDraft, setDownloaderDraft] = useState<DownloaderDraft>(() => ({
+    name: "",
+    type: "sabnzbd",
+    host: "http://localhost",
+    port: 8080,
+    apiKey: "",
+    username: "",
+    password: "",
+    category: "ebooks",
+  }));
+  const [downloaderModalStatus, setDownloaderModalStatus] = useState<string | null>(null);
+  const [downloaderTestStatus, setDownloaderTestStatus] = useState<string | null>(null);
+  const [downloaderListStatus, setDownloaderListStatus] = useState<string | null>(null);
 
   const parseCategoriesInput = (value: string) => {
     const parsed = value
@@ -93,6 +132,36 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
     }
     return [...DEFAULT_EBOOK_CATEGORIES];
   };
+
+  const fetchPathMappings = async (clientId: number, silent = false) => {
+    if (!silent) {
+      setPathMappingListStatus("Loading path mappings…");
+    }
+    try {
+      const response = await fetch(`/api/download-clients/${clientId}/path-mappings`);
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.detail ?? "Unable to load path mappings");
+      }
+      const { data } = await response.json();
+      setPathMappingsByClient((prev) => ({ ...prev, [clientId]: data }));
+      setPathMappingListStatus(null);
+    } catch (error) {
+      setPathMappingListStatus(error instanceof Error ? error.message : "Unable to load path mappings");
+    }
+  };
+
+  useEffect(() => {
+    setPathMappingDraft({ remotePath: "", localPath: "" });
+    setPathMappingStatus(null);
+    if (!selectedMappingClientId) {
+      return;
+    }
+    if (selectedPathMappings) {
+      return;
+    }
+    fetchPathMappings(selectedMappingClientId, true);
+  }, [selectedMappingClientId, selectedPathMappings]);
 
   const openCreateIndexerModal = () => {
     setIndexerDraft({
@@ -272,29 +341,236 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
     formElement.reset();
   };
 
-  const handleCreateDownloadClient = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const formData = new FormData(event.currentTarget);
+  const openCreateDownloaderModal = () => {
+    setDownloaderDraft({
+      name: "",
+      type: "sabnzbd",
+      host: "http://localhost",
+      port: 8080,
+      apiKey: "",
+      username: "",
+      password: "",
+      category: "ebooks",
+    });
+    setDownloaderModalMode("create");
+    setDownloaderModalStatus(null);
+    setDownloaderTestStatus(null);
+    setDownloaderModalOpen(true);
+  };
+
+  const openEditDownloaderModal = (client: DownloadClient) => {
+    setDownloaderDraft({
+      id: client.id,
+      name: client.name,
+      type: client.type,
+      host: client.host,
+      port: client.port,
+      apiKey: client.apiKey ?? "",
+      username: client.username ?? "",
+      password: client.password ?? "",
+      category: client.category ?? "ebooks",
+    });
+    setDownloaderModalMode("edit");
+    setDownloaderModalStatus(null);
+    setDownloaderTestStatus(null);
+    setDownloaderModalOpen(true);
+  };
+
+  const closeDownloaderModal = () => {
+    setDownloaderModalOpen(false);
+  };
+
+  const handleDownloaderDraftChange = (field: keyof DownloaderDraft, value: string) => {
+    setDownloaderDraft((prev) => ({
+      ...prev,
+      [field]: field === "port" ? Number(value) || 0 : value,
+    }));
+  };
+
+  const handleSaveDownloader = async () => {
+    if (!downloaderDraft.name.trim() || !downloaderDraft.host.trim()) {
+      setDownloaderModalStatus("Name and host are required");
+      return;
+    }
+
+    setDownloaderModalStatus(downloaderModalMode === "create" ? "Creating client…" : "Saving client…");
     const payload = {
-      name: formData.get("name"),
-      type: formData.get("type"),
-      host: formData.get("host"),
-      port: Number(formData.get("port")),
-      apiKey: formData.get("apiKey") || undefined,
-      username: formData.get("username") || undefined,
-      password: formData.get("password") || undefined,
-      category: formData.get("category") || "ebooks",
+      name: downloaderDraft.name.trim(),
+      type: downloaderDraft.type,
+      host: downloaderDraft.host.trim(),
+      port: Number.isFinite(downloaderDraft.port) ? downloaderDraft.port : 8080,
+      apiKey: downloaderDraft.apiKey?.trim() || undefined,
+      username: downloaderDraft.username?.trim() || undefined,
+      password: downloaderDraft.password?.trim() || undefined,
+      category: downloaderDraft.category.trim() || "ebooks",
       enabled: true,
     };
-    const response = await fetch("/api/download-clients", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (!response.ok) return;
-    const { data } = await response.json();
-    setDownloadClients((current) => [...current, data]);
-    event.currentTarget.reset();
+
+    try {
+      const response = await fetch(
+        downloaderDraft.id ? `/api/download-clients/${downloaderDraft.id}` : "/api/download-clients",
+        {
+          method: downloaderDraft.id ? "PUT" : "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.detail ?? "Request failed");
+      }
+      const { data } = await response.json();
+      setDownloadClients((current) =>
+        downloaderDraft.id ? current.map((client) => (client.id === data.id ? data : client)) : [...current, data],
+      );
+      setDownloaderModalOpen(false);
+    } catch (error) {
+      setDownloaderModalStatus(error instanceof Error ? error.message : "Failed to save download client");
+      return;
+    } finally {
+      setDownloaderTestStatus(null);
+    }
+  };
+
+  const handleTestDownloaderDraft = async () => {
+    if (!downloaderDraft.host.trim()) {
+      setDownloaderTestStatus("Host is required to test");
+      return;
+    }
+
+    setDownloaderTestStatus("Testing…");
+    try {
+      const response = await fetch("/api/download-clients/test", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          type: downloaderDraft.type,
+          host: downloaderDraft.host.trim(),
+          port: Number.isFinite(downloaderDraft.port) ? downloaderDraft.port : 8080,
+          apiKey: downloaderDraft.apiKey?.trim() || undefined,
+          username: downloaderDraft.username?.trim() || undefined,
+          password: downloaderDraft.password?.trim() || undefined,
+        }),
+      });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.detail ?? "Test failed");
+      }
+      setDownloaderTestStatus("Connection successful");
+    } catch (error) {
+      setDownloaderTestStatus(error instanceof Error ? error.message : "Unable to reach download client");
+    }
+  };
+
+  const handleTestExistingDownloader = async (client: DownloadClient) => {
+    setDownloaderListStatus(`Testing ${client.name}…`);
+    try {
+      const response = await fetch("/api/download-clients/test", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          type: client.type,
+          host: client.host,
+          port: client.port,
+          apiKey: client.apiKey ?? undefined,
+          username: client.username ?? undefined,
+          password: client.password ?? undefined,
+        }),
+      });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.detail ?? "Test failed");
+      }
+      setDownloaderListStatus(`${client.name} responded successfully`);
+    } catch (error) {
+      setDownloaderListStatus(error instanceof Error ? error.message : "Unable to reach download client");
+    }
+  };
+
+  const handleDeleteDownloader = async (client: DownloadClient) => {
+    try {
+      const response = await fetch(`/api/download-clients/${client.id}`, { method: "DELETE" });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.detail ?? "Delete failed");
+      }
+      setDownloadClients((current) => {
+        const next = current.filter((item) => item.id !== client.id);
+        if (selectedMappingClientId === client.id) {
+          setSelectedMappingClientId(next[0]?.id ?? null);
+        }
+        return next;
+      });
+      setPathMappingsByClient((prev) => {
+        if (!(client.id in prev)) {
+          return prev;
+        }
+        const next = { ...prev };
+        delete next[client.id];
+        return next;
+      });
+      setDownloaderListStatus(`${client.name} deleted`);
+    } catch (error) {
+      setDownloaderListStatus(error instanceof Error ? error.message : "Failed to delete download client");
+    }
+  };
+
+  const handlePathMappingDraftChange = (field: keyof typeof pathMappingDraft, value: string) => {
+    setPathMappingDraft((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleAddPathMapping = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selectedMappingClientId) {
+      setPathMappingStatus("Select a download client first");
+      return;
+    }
+    const remotePath = pathMappingDraft.remotePath.trim();
+    const localPath = pathMappingDraft.localPath.trim();
+    if (!remotePath || !localPath) {
+      setPathMappingStatus("Remote and local paths are required");
+      return;
+    }
+    setPathMappingStatus("Saving path mapping…");
+    try {
+      const response = await fetch(`/api/download-clients/${selectedMappingClientId}/path-mappings`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ remotePath, localPath }),
+      });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.detail ?? "Request failed");
+      }
+      const { data } = await response.json();
+      setPathMappingsByClient((prev) => ({
+        ...prev,
+        [selectedMappingClientId]: [...(prev[selectedMappingClientId] ?? []), data],
+      }));
+      setPathMappingDraft({ remotePath: "", localPath: "" });
+      setPathMappingStatus("Mapping saved");
+    } catch (error) {
+      setPathMappingStatus(error instanceof Error ? error.message : "Failed to save mapping");
+    }
+  };
+
+  const handleDeletePathMapping = async (mappingId: number) => {
+    if (!selectedMappingClientId) return;
+    setPathMappingListStatus("Removing mapping…");
+    try {
+      const response = await fetch(`/api/download-clients/path-mappings/${mappingId}`, { method: "DELETE" });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.detail ?? "Delete failed");
+      }
+      setPathMappingsByClient((prev) => ({
+        ...prev,
+        [selectedMappingClientId]: (prev[selectedMappingClientId] ?? []).filter((mapping) => mapping.id !== mappingId),
+      }));
+      setPathMappingListStatus(null);
+    } catch (error) {
+      setPathMappingListStatus(error instanceof Error ? error.message : "Failed to remove mapping");
+    }
   };
 
   return (
@@ -355,14 +631,15 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
               <div>
                 <Label>Active download client</Label>
                 <Select
-                  value={form.activeDownloaderClientId ? String(form.activeDownloaderClientId) : undefined}
+                  value={form.activeDownloaderClientId ? String(form.activeDownloaderClientId) : ""}
                   onValueChange={(value) =>
-                    setForm((prev) => ({ ...prev, activeDownloaderClientId: Number(value) }))
+                    setForm((prev) => ({ ...prev, activeDownloaderClientId: value ? Number(value) : undefined }))
                   }
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
+
                   <SelectContent>
                     <SelectGroup>
                       {downloadClients.map((client) => (
@@ -466,44 +743,139 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
       )}
 
       {activeTab === "downloaders" && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Download clients</CardTitle>
-            <CardDescription>SABnzbd or NZBGet endpoints.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <ul className="text-sm text-muted-foreground">
-              {downloadClients.map((client) => (
-                <li key={client.id}>
-                  {client.name} · {client.type} · {client.host}:{client.port}
-                </li>
-              ))}
-            </ul>
-            <form onSubmit={handleCreateDownloadClient} className="grid gap-2 md:grid-cols-2">
-              <Input name="name" placeholder="Client name" required />
-              <Select name="type" defaultValue="sabnzbd">
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="sabnzbd">SABnzbd</SelectItem>
-                  <SelectItem value="nzbget">NZBGet</SelectItem>
-                </SelectContent>
-              </Select>
-              <Input name="host" placeholder="Host" required />
-              <Input name="port" type="number" placeholder="Port" required defaultValue={8080} />
-              <Input name="apiKey" placeholder="API key (SABnzbd)" />
-              <Input name="username" placeholder="Username (NZBGet)" />
-              <Input name="password" placeholder="Password (NZBGet)" />
-              <Input name="category" placeholder="Category" defaultValue="ebooks" />
-              <div className="md:col-span-2">
-                <Button type="submit" size="sm">
-                  Add client
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-semibold">Download clients</h3>
+              <p className="text-sm text-muted-foreground">Manage SABnzbd or NZBGet endpoints.</p>
+            </div>
+            <Button onClick={openCreateDownloaderModal}>Add Download Client</Button>
+          </div>
+          {downloaderListStatus && <p className="text-sm text-muted-foreground">{downloaderListStatus}</p>}
+          {downloadClients.length === 0 && (
+            <Card>
+              <CardContent className="py-6 text-sm text-muted-foreground">No download clients configured.</CardContent>
+            </Card>
+          )}
+          <div className="grid gap-4 md:grid-cols-2">
+            {downloadClients.map((client) => (
+              <Card key={client.id}>
+                <CardHeader className="flex flex-row items-start justify-between gap-3">
+                  <div>
+                    <CardTitle>{client.name}</CardTitle>
+                    <CardDescription>
+                      {client.type.toUpperCase()} · {client.host}:{client.port}
+                    </CardDescription>
+                  </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-muted-foreground/20 bg-muted/50 text-muted-foreground transition hover:border-primary/40 hover:text-primary">
+                      <MoreHorizontal className="h-4 w-4" />
+                      <span className="sr-only">Download client actions</span>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => openEditDownloaderModal(client)}>Edit</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleTestExistingDownloader(client)}>Test</DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => handleDeleteDownloader(client)} variant="destructive">
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </CardHeader>
+                <CardContent className="space-y-1 text-sm text-muted-foreground">
+                  <p>Category: {client.category ?? "ebooks"}</p>
+                  <p>API key: {client.apiKey ? "••••••••" : "—"}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+          <Card>
+            <CardHeader>
+              <CardTitle>Remote path mappings</CardTitle>
+              <CardDescription>Translate downloader paths to local filesystem locations.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {downloadClients.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Add a download client to configure path mappings.</p>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <Label>Download client</Label>
+                    <Select
+                      value={selectedMappingClientId ? String(selectedMappingClientId) : ""}
+                      onValueChange={(value) => setSelectedMappingClientId(value ? Number(value) : null)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          {downloadClients.map((client) => (
+                            <SelectItem key={client.id} value={String(client.id)}>
+                              {client.name}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {pathMappingListStatus && (
+                    <p className="text-sm text-muted-foreground">{pathMappingListStatus}</p>
+                  )}
+                  <div className="space-y-2">
+                    {(selectedPathMappings ?? []).length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No path mappings defined.</p>
+                    ) : (
+                      selectedPathMappings?.map((mapping) => (
+                        <div
+                          key={mapping.id}
+                          className="flex flex-wrap items-center justify-between gap-3 rounded border px-3 py-2 text-sm"
+                        >
+                          <div>
+                            <p className="font-medium">{mapping.remotePath}</p>
+                            <p className="text-xs text-muted-foreground">{mapping.localPath}</p>
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleDeletePathMapping(mapping.id)}
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <form className="grid gap-3 md:grid-cols-2" onSubmit={handleAddPathMapping}>
+                    <div>
+                      <Label>Remote path</Label>
+                      <Input
+                        value={pathMappingDraft.remotePath}
+                        onChange={(event) => handlePathMappingDraftChange("remotePath", event.target.value)}
+                        placeholder="/downloads/incomplete"
+                      />
+                    </div>
+                    <div>
+                      <Label>Local path</Label>
+                      <Input
+                        value={pathMappingDraft.localPath}
+                        onChange={(event) => handlePathMappingDraftChange("localPath", event.target.value)}
+                        placeholder="/mnt/storage/downloads"
+                      />
+                    </div>
+                    <div className="md:col-span-2 flex flex-wrap items-center gap-3">
+                      <Button type="submit" size="sm" disabled={!selectedMappingClientId}>
+                        Add Mapping
+                      </Button>
+                      {pathMappingStatus && <span className="text-sm text-muted-foreground">{pathMappingStatus}</span>}
+                    </div>
+                  </form>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {isIndexerModalOpen && (
@@ -561,14 +933,15 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
               </div>
               <div>
                 <Label>Categories</Label>
-                <Input
-                  value={indexerDraft.categories}
-                  onChange={(event) => handleIndexerDraftChange("categories", event.target.value)}
-                  placeholder="8000, 8010, 8020, 8040"
-                />
-                <p className="mt-1 text-xs text-muted-foreground">
-                  These categories are combined with the default ebook set 8000/8010/8020/8040 automatically.
-                </p>
+                  <Input
+                    value={indexerDraft.categories}
+                    onChange={(event) => handleIndexerDraftChange("categories", event.target.value)}
+                    placeholder="7000, 7010, 7020, 7040"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    These categories are combined with the default ebook set 7000/7010/7020/7040 automatically.
+                  </p>
+
               </div>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
@@ -588,6 +961,124 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
                   </Button>
                   <Button type="submit">
                     {indexerModalMode === "create" ? "Create" : "Save"}
+                  </Button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {isDownloaderModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 py-8">
+          <div className="w-full max-w-lg rounded-2xl border bg-background p-6 shadow-2xl">
+            <div className="mb-4 space-y-1">
+              <h3 className="text-xl font-semibold">
+                {downloaderModalMode === "create" ? "Add Download Client" : "Edit Download Client"}
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                {downloaderModalStatus ?? "Configure a SABnzbd or NZBGet endpoint."}
+              </p>
+            </div>
+            <form
+              className="space-y-4"
+              onSubmit={(event) => {
+                event.preventDefault();
+                handleSaveDownloader();
+              }}
+            >
+              <div className="grid gap-3 md:grid-cols-2">
+                <div>
+                  <Label>Name</Label>
+                  <Input
+                    value={downloaderDraft.name}
+                    onChange={(event) => handleDownloaderDraftChange("name", event.target.value)}
+                    required
+                  />
+                </div>
+                <div>
+                  <Label>Port</Label>
+                  <Input
+                    type="number"
+                    value={downloaderDraft.port}
+                    onChange={(event) => handleDownloaderDraftChange("port", event.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div>
+                  <Label>Type</Label>
+                  <Select
+                    value={downloaderDraft.type}
+                    onValueChange={(value) => handleDownloaderDraftChange("type", value ?? downloaderDraft.type)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="sabnzbd">SABnzbd</SelectItem>
+                      <SelectItem value="nzbget">NZBGet</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Category</Label>
+                  <Input
+                    value={downloaderDraft.category}
+                    onChange={(event) => handleDownloaderDraftChange("category", event.target.value)}
+                  />
+                </div>
+              </div>
+              <div>
+                <Label>Host</Label>
+                <Input
+                  value={downloaderDraft.host}
+                  onChange={(event) => handleDownloaderDraftChange("host", event.target.value)}
+                  placeholder="http://localhost"
+                  required
+                />
+              </div>
+              {downloaderDraft.type === "sabnzbd" && (
+                <div>
+                  <Label>API key</Label>
+                  <Input
+                    placeholder="API key"
+                    value={downloaderDraft.apiKey ?? ""}
+                    onChange={(event) => handleDownloaderDraftChange("apiKey", String(event.target.value ?? ""))}
+                  />
+                </div>
+              )}
+              {downloaderDraft.type === "nzbget" && (
+                <div>
+                  <Label>Username & Password</Label>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <Input
+                      placeholder="Username"
+                      value={downloaderDraft.username ?? ""}
+                      onChange={(event) => handleDownloaderDraftChange("username", String(event.target.value ?? ""))}
+                    />
+                    <Input
+                      placeholder="Password"
+                      type="password"
+                      value={downloaderDraft.password ?? ""}
+                      onChange={(event) => handleDownloaderDraftChange("password", String(event.target.value ?? ""))}
+                    />
+                  </div>
+                </div>
+              )}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <Button type="button" variant="secondary" onClick={handleTestDownloaderDraft}>
+                    Test
+                  </Button>
+                  {downloaderTestStatus && <span className="text-sm text-muted-foreground">{downloaderTestStatus}</span>}
+                </div>
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" onClick={closeDownloaderModal}>
+                    Cancel
+                  </Button>
+                  <Button type="submit">
+                    {downloaderModalMode === "create" ? "Create" : "Save"}
                   </Button>
                 </div>
               </div>

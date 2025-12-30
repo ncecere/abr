@@ -1,11 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
+import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { eq } from "drizzle-orm";
 import { env } from "@/config";
 import { db } from "@/db/client";
 import { books, formats, settings } from "@/db/schema";
 import { logger } from "@/lib/logger";
 
+const MIGRATIONS_FOLDER = path.join(process.cwd(), "drizzle");
 export const DEFAULT_LIBRARY_ROOT = env.LIBRARY_ROOT ?? path.resolve("var", "library");
 
 const DEFAULT_FORMATS = [
@@ -17,6 +19,13 @@ const DEFAULT_FORMATS = [
 export async function bootstrapDatabase() {
   ensureDirectory(path.dirname(env.DATABASE_PATH));
   ensureDirectory(env.DOWNLOADS_DIR);
+
+  try {
+    await migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
+  } catch (error) {
+    logger.error({ err: error }, "failed to apply database migrations");
+    throw error;
+  }
 
   const currentSettings = await db.query.settings.findFirst();
   if (!currentSettings) {

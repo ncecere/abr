@@ -17,7 +17,7 @@ export function Sidebar({ restartRequired }: { restartRequired: boolean }) {
   const pathname = usePathname();
 
   return (
-    <aside className="bg-sidebar border-r px-6 py-8">
+    <aside className="bg-sidebar border-r px-6 py-8 h-full">
       <div className="mb-10 space-y-1">
         <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
           EBR

@@ -1,6 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { createReadStream, createWriteStream } from "node:fs";
 import { eq } from "drizzle-orm";
+
 import { db } from "@/db/client";
 import { bookFiles, books } from "@/db/schema";
 import { emitActivity } from "@/lib/activity";
@@ -35,7 +37,8 @@ export async function importFileForBook(
 
     await fs.mkdir(destinationDirectory, { recursive: true });
     const destinationPath = path.join(destinationDirectory, path.basename(found));
-    await fs.rename(found, destinationPath);
+
+    await moveFile(found, destinationPath);
 
     const stats = await fs.stat(destinationPath);
     await db.insert(bookFiles).values({
@@ -57,6 +60,39 @@ export async function importFileForBook(
   }
 
   throw new Error("No matching files found for import");
+}
+
+async function moveFile(source: string, destination: string) {
+  try {
+    await fs.rename(source, destination);
+  } catch (error) {
+    if (error instanceof Error && (error as NodeJS.ErrnoException).code === "EXDEV") {
+      await copyAndRemove(source, destination);
+      return;
+    }
+    throw error;
+  }
+}
+
+async function copyAndRemove(source: string, destination: string) {
+  await new Promise<void>((resolve, reject) => {
+    const readStream = createReadStream(source);
+    const writeStream = createWriteStream(destination);
+    readStream.on("error", reject);
+    writeStream.on("error", reject);
+    writeStream.on("close", () => resolve());
+    readStream.pipe(writeStream);
+  });
+  try {
+    await fs.unlink(source);
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    if (err.code === "EACCES" || err.code === "EPERM") {
+      logger.warn({ source }, "unable to remove source file after copy");
+      return;
+    }
+    throw error;
+  }
 }
 
 async function collectFiles(targetPath: string) {
