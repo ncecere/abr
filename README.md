@@ -20,24 +20,37 @@ ABR (Audiobook Robot) is a self-hosted workflow that pulls title metadata from A
 
 ## Quick start
 
+### Local development
+
 1. **Install dependencies**
    ```bash
-   npm install
+   bun install
    ```
 2. **Configure environment**
    ```bash
    cp .env.example .env
    # update paths and (optionally) add Audible OAuth credentials
    ```
-3. **Apply database migrations**
+3. **Run the dev server** (migrations are applied automatically on startup)
    ```bash
-   npm run db:migrate
+   bun run dev
    ```
-4. **Run the dev server**
-   ```bash
-   npm run dev
-   ```
-5. Browse to [http://localhost:3000](http://localhost:3000), open Settings, and add your indexers, formats, and download client. Once an Audible title is added it will queue searches automatically.
+4. Browse to [http://localhost:3000](http://localhost:3000), open Settings, and add your indexers, formats, and download client. Once an Audible title is added it will queue searches automatically.
+
+### Docker
+
+The repo includes a single-service Compose stack that builds and runs ABR:
+
+```bash
+docker compose up -d --build
+```
+
+This will:
+- Build the image (using the multi-stage `Dockerfile`)
+- Create volumes `abr_data`, `abr_library`, `abr_downloads`
+- Start the container `abr_app` on port 3000
+
+Migrations run automatically when the container boots. Update `.env` before invoking Compose if you need to override defaults (e.g., Audible credentials).
 
 ## Configuration overview
 
@@ -55,6 +68,21 @@ Key environment variables live in `.env` and are parsed by `src/config/env.ts`:
 | `NEWZNAB_REQUEST_TIMEOUT_MS`, `JOB_CONCURRENCY`, `SEARCH_INTERVAL_MINUTES`, `DOWNLOAD_POLL_INTERVAL_SECONDS` | Operational tuning knobs | see `.env.example` |
 
 Operator-level settings (port, active downloader, library root, indexers, formats, download clients) are persisted in the database via the Settings UI and should not be hard-coded in `.env`.
+
+### Configuring the app
+
+Open the **Settings** tab in the UI to manage everything outside of `.env`.
+
+1. **Indexers**
+   - Click **Add Indexer** and enter the provider name, base URL (e.g., `https://api.nzbgeek.info`), API key, and default categories. The form accepts comma-separated category ids and automatically adds 3030/3035/3036/3040 if you omit them. Existing indexers can be edited, tested, or deleted via the `…` menu on each card. The UI masks API keys, but the full key is stored in the database.
+2. **Formats**
+   - The Formats tab controls which file extensions the importer considers. Click **Add Format**, provide a label (e.g., `MP4`), a comma-separated list of extensions (`mp4`), and a priority (lower numbers mean “higher priority”). Disable formats if you want to skip specific containers.
+3. **Download Clients**
+   - Add SABnzbd or NZBGet instances by selecting the type, host, port, and credentials. The `Category` field should match the queue/category configured in your downloader (ABR defaults to `audiobooks`). Once a client is saved you can test connectivity from the `…` menu.
+4. **Path mappings**
+   - If your downloader writes to a path that differs from ABR’s filesystem (e.g., SAB sees `/shared/downloads` while ABR sees `/Volumes/nfs-shared/downloads`), create a mapping under **Download Clients → Path mappings**. Set the “Remote path” to the downloader’s view and “Local path” to ABR’s view. The importer rewrites every completed download path using these mappings before moving files.
+5. **Default downloader**
+   - Under the **Server** tab choose the active download client from the dropdown. ABR queues new releases against that client. This tab also lets you change the library root/port/search interval; after saving, restart if the UI shows “Restart required”.
 
 ## Data flow
 
