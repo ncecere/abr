@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Book } from "@/db/schema";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { buttonVariants } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -24,8 +25,14 @@ interface LibraryGridProps {
 export function LibraryGrid({ books }: LibraryGridProps) {
   const [items, setItems] = useState(books);
   const [status, setStatus] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<"title" | "newest" | "state">("title");
   const manualSearch = useManualSearchModal();
   const router = useRouter();
+
+  useEffect(() => {
+    setItems(books);
+  }, [books]);
 
   const refresh = () => router.refresh();
 
@@ -66,11 +73,53 @@ export function LibraryGrid({ books }: LibraryGridProps) {
     }
   };
 
+  const visibleItems = useMemo<Book[]>(() => {
+    const normalized = query.trim().toLowerCase();
+    let filtered = items;
+    if (normalized) {
+      filtered = items.filter((book) => {
+        const title = book.title?.toLowerCase?.() ?? "";
+        const authors = (JSON.parse(book.authorsJson ?? "[]") as string[]).join(" ").toLowerCase();
+        return title.includes(normalized) || authors.includes(normalized);
+      });
+    }
+    const sorted = [...filtered];
+    sorted.sort((a, b) => {
+      if (sort === "title") {
+        return (a.title ?? "").localeCompare(b.title ?? "");
+      }
+      if (sort === "state") {
+        return (a.state ?? "").localeCompare(b.state ?? "");
+      }
+      const aTime = a.updatedAt?.valueOf?.() ?? a.createdAt?.valueOf?.() ?? 0;
+      const bTime = b.updatedAt?.valueOf?.() ?? b.createdAt?.valueOf?.() ?? 0;
+      return bTime - aTime;
+    });
+    return sorted;
+  }, [items, query, sort]);
+
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <Input
+          placeholder="Search library…"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          className="w-full max-w-sm"
+        />
+        <select
+          value={sort}
+          onChange={(event) => setSort(event.target.value as "title" | "newest" | "state")}
+          className="rounded-md border bg-background px-3 py-2 text-sm"
+        >
+          <option value="title">Title (A–Z)</option>
+          <option value="newest">Recently Updated</option>
+          <option value="state">Status</option>
+        </select>
+      </div>
       {status && <p className="text-sm text-muted-foreground">{status}</p>}
       <div className="flex flex-wrap gap-6">
-        {items.map((book) => {
+        {visibleItems.map((book) => {
           const authors = JSON.parse(book.authorsJson ?? "[]") as string[];
           const version = (book.updatedAt ?? book.createdAt)?.valueOf?.() ?? 0;
           const imageSrc = book.coverPath
@@ -140,7 +189,7 @@ export function LibraryGrid({ books }: LibraryGridProps) {
             </div>
           );
         })}
-        {items.length === 0 && <p className="text-muted-foreground">No books added yet.</p>}
+        {visibleItems.length === 0 && <p className="text-muted-foreground">No books found.</p>}
       </div>
     </div>
   );
