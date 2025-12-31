@@ -4,7 +4,7 @@ import { listBooks } from "@/lib/services/books";
 import { LibraryGrid } from "@/ui/components/library-grid";
 
 export const metadata: Metadata = {
-  title: "EBR · Library",
+  title: "ABR · Library",
 };
 
 export default async function LibraryPage() {

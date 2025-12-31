@@ -11,14 +11,17 @@ import { useManualSearchModal } from "@/ui/components/manual-search-context";
 interface BookQuickActionsProps {
   bookId: number;
   bookTitle: string;
+  bookState?: string;
 }
 
-export function BookQuickActions({ bookId, bookTitle }: BookQuickActionsProps) {
+export function BookQuickActions({ bookId, bookTitle, bookState }: BookQuickActionsProps) {
   const manualSearch = useManualSearchModal();
   const router = useRouter();
   const { showToast } = useToast();
   const [status, setStatus] = useState<string | null>(null);
   const [automaticSearchPending, setAutomaticSearchPending] = useState(false);
+  const [retryStatus, setRetryStatus] = useState<string | null>(null);
+  const [retryPending, setRetryPending] = useState(false);
   const [isEditOpen, setEditOpen] = useState(false);
   const [editStatus, setEditStatus] = useState<string | null>(null);
   const [editLoading, setEditLoading] = useState(false);
@@ -35,9 +38,13 @@ export function BookQuickActions({ bookId, bookTitle }: BookQuickActionsProps) {
       }
       const payload = await response.json().catch(() => null);
       const releaseTitle = payload?.data?.releaseTitle ?? bookTitle;
-      setStatus(`Queued download for "${releaseTitle}"`);
+      const message = `Queued download for "${releaseTitle}"`;
+      setStatus(message);
+      showToast(message, "success");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Automatic search failed");
+      const message = error instanceof Error ? error.message : "Automatic search failed";
+      setStatus(message);
+      showToast(message, "error");
     } finally {
       setAutomaticSearchPending(false);
     }
@@ -45,6 +52,26 @@ export function BookQuickActions({ bookId, bookTitle }: BookQuickActionsProps) {
 
   const manualSearchAction = () => {
     manualSearch.openModal({ id: bookId, title: bookTitle });
+  };
+
+  const retryImport = async () => {
+    setRetryPending(true);
+    setRetryStatus("Re-queuing import…");
+    try {
+      const response = await fetch(`/api/books/${bookId}/retry-import`, { method: "POST" });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.detail ?? "Failed to queue import");
+      }
+      setRetryStatus("Import queued — importer will run shortly.");
+      showToast("Import queued", "success");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to retry import";
+      setRetryStatus(message);
+      showToast(message, "error");
+    } finally {
+      setRetryPending(false);
+    }
   };
 
   useEffect(() => {
@@ -119,6 +146,14 @@ export function BookQuickActions({ bookId, bookTitle }: BookQuickActionsProps) {
         <Button variant="secondary" size="sm" onClick={manualSearchAction}>
           Manual Search
         </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={retryImport}
+          disabled={retryPending || !bookState || bookState === "AVAILABLE"}
+        >
+          Retry Import
+        </Button>
         <Button size="sm" onClick={openEditModal}>
           Edit
         </Button>
@@ -127,6 +162,7 @@ export function BookQuickActions({ bookId, bookTitle }: BookQuickActionsProps) {
         </Button>
       </div>
       {status && <p className="text-xs text-muted-foreground">{status}</p>}
+      {retryStatus && <p className="text-xs text-muted-foreground">{retryStatus}</p>}
       {isEditOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 py-8">
           <div className="w-full max-w-md space-y-4 rounded-2xl border bg-background p-6 shadow-2xl">

@@ -1,4 +1,4 @@
-import { asc, eq, ne } from "drizzle-orm";
+import { asc, desc, eq, ne } from "drizzle-orm";
 import { db } from "@/db/client";
 import {
   books,
@@ -97,14 +97,24 @@ async function handleGrabRelease(job: Job) {
 }
 
 async function handlePollDownloads() {
-  const active = await db
+  const rawActive = await db
     .select()
     .from(downloads)
-    .where(ne(downloads.status, "completed"));
+    .where(ne(downloads.status, "completed"))
+    .orderBy(desc(downloads.id));
+
+  const deduped: typeof rawActive = [];
+  const seen = new Set<string>();
+  for (const entry of rawActive) {
+    const key = entry.downloaderItemId ?? String(entry.id);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(entry);
+  }
 
   const pathMappingCache = new Map<number, DownloadClientPathMapping[]>();
 
-  for (const download of active) {
+  for (const download of deduped.reverse()) {
     const client = await db.query.downloadClients.findFirst({
       where: (fields, { eq }) => eq(fields.id, download.downloadClientId),
     });
@@ -137,10 +147,14 @@ async function handlePollDownloads() {
       }
     }
 
+    const updateWhere = download.downloaderItemId
+      ? eq(downloads.downloaderItemId, download.downloaderItemId)
+      : eq(downloads.id, download.id);
+
     await db
       .update(downloads)
       .set({ status: status.status, outputPath: resolvedOutputPath, error: status.error, updatedAt: new Date() })
-      .where(eq(downloads.id, download.id));
+      .where(updateWhere);
 
     if (status.status === "completed" && resolvedOutputPath) {
       await emitActivity("DOWNLOAD_COMPLETED", "Download completed", download.bookId);

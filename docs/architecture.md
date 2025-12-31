@@ -1,4 +1,4 @@
-# EBR Architecture
+# ABR Architecture
 
 ## Runtime overview
 

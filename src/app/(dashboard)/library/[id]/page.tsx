@@ -11,7 +11,7 @@ import { BookQuickActions } from "@/ui/components/book-quick-actions";
 
 
 export const metadata: Metadata = {
-  title: "EBR · Book detail",
+  title: "ABR · Book detail",
 };
 
 const ACTIVITY_PAGE_SIZE = 10;
@@ -74,77 +74,67 @@ export default async function LibraryDetailPage({
           )}
         </div>
         <div className="flex-1 space-y-4">
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <Link href="/library" className="text-sm text-muted-foreground hover:underline">
-                ← Back to Library
-              </Link>
-              <BookQuickActions bookId={book.id} bookTitle={book.title} />
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <Link href="/library" className="text-sm text-muted-foreground hover:underline">
+                  ← Back to Library
+                </Link>
+                <BookQuickActions bookId={book.id} bookTitle={book.title} bookState={book.state ?? "MISSING"} />
+              </div>
+              <h1 className="text-3xl font-semibold">{book.title}</h1>
+              <p className="text-muted-foreground">
+                <span className="font-medium">Author:</span> {authors.length ? authors.join(", ") : "Unknown"}
+                {narrators.length > 0 && (
+                  <>
+                    {" "}· <span className="font-medium">Narrator:</span> {narrators.join(", ")}
+                  </>
+                )}
+              </p>
             </div>
-            <h1 className="text-3xl font-semibold">{book.title}</h1>
-            <p className="text-muted-foreground">
-              {authors.length ? authors.join(", ") : "Unknown author"}
-            </p>
-          </div>
+
           <Badge variant={book.state === "AVAILABLE" ? "default" : "secondary"}>{book.state}</Badge>
-          <dl className="grid gap-3 text-sm">
-            <div>
-              <dt className="text-muted-foreground">Audible ASIN</dt>
-              <dd>{book.audibleAsin}</dd>
+          <div className="space-y-3 text-sm">
+            <div className="flex flex-wrap gap-6 text-muted-foreground">
+              <span>
+                <span className="font-medium">ASIN:</span> {book.audibleAsin}
+              </span>
+              {book.publishYear && (
+                <span>
+                  <span className="font-medium">Year:</span> {book.publishYear}
+                </span>
+              )}
+              {book.runtimeSeconds && (
+                <span>
+                  <span className="font-medium">Runtime:</span> {formatRuntime(book.runtimeSeconds)}
+                </span>
+              )}
+              {book.language && (
+                <span>
+                  <span className="font-medium">Language:</span> {book.language.toUpperCase()}
+                </span>
+              )}
             </div>
-            {book.publishYear && (
-              <div>
-                <dt className="text-muted-foreground">Year</dt>
-                <dd>{book.publishYear}</dd>
-              </div>
-            )}
-            {book.releaseDate && (
-              <div>
-                <dt className="text-muted-foreground">Release date</dt>
-                <dd>{formatReleaseDate(book.releaseDate)}</dd>
-              </div>
-            )}
-            {narrators.length > 0 && (
-              <div>
-                <dt className="text-muted-foreground">Narrators</dt>
-                <dd>{narrators.join(", ")}</dd>
-              </div>
-            )}
-            {book.runtimeSeconds && (
-              <div>
-                <dt className="text-muted-foreground">Runtime</dt>
-                <dd>{formatRuntime(book.runtimeSeconds)}</dd>
-              </div>
-            )}
-            {book.language && (
-              <div>
-                <dt className="text-muted-foreground">Language</dt>
-                <dd>{book.language.toUpperCase()}</dd>
-              </div>
-            )}
             {book.sampleUrl && (
-              <div>
-                <dt className="text-muted-foreground">Sample clip</dt>
-                <dd>
-                  <a className="text-primary underline" href={book.sampleUrl} target="_blank" rel="noreferrer">
-                    Listen preview
-                  </a>
-                </dd>
-              </div>
+              <p>
+                <span className="text-muted-foreground font-medium">Sample clip:</span>{" "}
+                <a className="text-primary underline" href={book.sampleUrl} target="_blank" rel="noreferrer">
+                  Listen preview
+                </a>
+              </p>
             )}
             {files.length > 0 && (
               <div>
-                <dt className="text-muted-foreground">Files</dt>
-                <dd className="space-y-1">
+                <p className="text-muted-foreground font-medium">Files</p>
+                <div className="space-y-1">
                   {files.map((file) => (
                     <div key={file.id} className="rounded border px-3 py-1 text-xs text-muted-foreground">
                       {file.path}
                     </div>
                   ))}
-                </dd>
+                </div>
               </div>
             )}
-          </dl>
+          </div>
           {book.description && (
             <div>
               <h2 className="text-base font-semibold">Description</h2>

@@ -6,7 +6,7 @@ import { listDownloadClients } from "@/lib/services/download-clients";
 import { SettingsPanel } from "@/ui/components/settings-panel";
 
 export const metadata: Metadata = {
-  title: "EBR · Settings",
+  title: "ABR · Settings",
 };
 
 export default async function SettingsPage() {

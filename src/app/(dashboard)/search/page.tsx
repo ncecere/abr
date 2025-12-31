@@ -2,7 +2,7 @@ import { Metadata } from "next";
 import { SearchClient } from "@/ui/components/search-client";
 
 export const metadata: Metadata = {
-  title: "EBR · Search",
+  title: "ABR · Search",
 };
 
 export default function SearchPage() {

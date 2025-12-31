@@ -104,18 +104,13 @@ export function SearchClient() {
                 )}
               </CardDescription>
             </CardHeader>
-            {(result.runtimeSeconds || result.language || result.releaseDate || result.description) && (
+            {(result.runtimeSeconds || result.language || result.releaseDate) && (
               <CardContent className="space-y-2">
-                {(result.runtimeSeconds || result.language || result.releaseDate) && (
-                  <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                    {result.runtimeSeconds && <Badge variant="secondary">{formatRuntime(result.runtimeSeconds)}</Badge>}
-                    {result.language && <Badge variant="outline">{result.language.toUpperCase()}</Badge>}
-                    {result.releaseDate && <Badge variant="outline">Released {formatReleaseDate(result.releaseDate)}</Badge>}
-                  </div>
-                )}
-                {result.description && (
-                  <Textarea value={result.description} readOnly rows={3} className="resize-none" />
-                )}
+                <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                  {result.runtimeSeconds && <Badge variant="secondary">{formatRuntime(result.runtimeSeconds)}</Badge>}
+                  {result.language && <Badge variant="outline">{result.language.toUpperCase()}</Badge>}
+                  {result.releaseDate && <Badge variant="outline">Released {formatReleaseDate(result.releaseDate)}</Badge>}
+                </div>
               </CardContent>
             )}
           </Card>

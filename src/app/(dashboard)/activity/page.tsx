@@ -4,7 +4,7 @@ import { db } from "@/db/client";
 import { activityEvents, books } from "@/db/schema";
 
 export const metadata: Metadata = {
-  title: "EBR · Activity",
+  title: "ABR · Activity",
 };
 
 export default async function ActivityPage() {

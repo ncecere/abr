@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal } from "lucide-react";
 import { Settings, Indexer, Format, DownloadClient, DownloadClientPathMapping } from "@/db/schema";
+import { maskSecret } from "@/lib/ui/mask";
 
 export type SettingsPanelProps = {
   settings: Settings;
@@ -866,7 +867,7 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
                       Categories: {categories.length ? categories.join(", ") : "None"}
                     </p>
                     <p>Priority: {indexer.priority ?? 0}</p>
-                    <p className="truncate text-xs">API key: {indexer.apiKey}</p>
+                    <p className="truncate text-xs">API key: {maskSecret(indexer.apiKey)}</p>
                   </CardContent>
                 </Card>
               );

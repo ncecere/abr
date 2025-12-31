@@ -7,7 +7,7 @@ loadEnv();
 const envSchema = z
   .object({
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-    DATABASE_PATH: z.string().default("var/data/ebr.sqlite"),
+    DATABASE_PATH: z.string().default("var/data/abr.sqlite"),
     DOWNLOADS_DIR: z.string().default("var/downloads"),
     LIBRARY_ROOT: z.string().optional(),
     AUDIBLE_CLIENT_ID: z.string().default(""),

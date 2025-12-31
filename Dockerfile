@@ -10,12 +10,14 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 FROM base AS builder
+ENV DATABASE_PATH=/tmp/build.sqlite
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
 
 FROM base AS runner
 ENV NODE_ENV=production
+ENV DATABASE_PATH=/app/var/data/abr.sqlite
 WORKDIR /app
 RUN mkdir -p /app/var/data /app/var/library /app/var/downloads
 COPY package.json package-lock.json ./

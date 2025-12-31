@@ -1,6 +1,6 @@
-# EBR · Audiobook Automation
+# ABR · Audiobook Automation
 
-EBR (Audiobook Robot) is a self-hosted workflow that pulls title metadata from Audible, searches your Newznab-compatible indexers for matching audiobook releases, hands approved matches to SABnzbd/NZBGet, and imports completed downloads into an organized `audiobook/{Author}/{Title}` library tree. The dashboard gives you a searchable catalog, activity feed, and settings surface for indexers, download clients, and format priorities.
+ABR (Audiobook Robot) is a self-hosted workflow that pulls title metadata from Audible, searches your Newznab-compatible indexers for matching audiobook releases, hands approved matches to SABnzbd/NZBGet, and imports completed downloads into an organized `audiobook/{Author}/{Title}` library tree. The dashboard gives you a searchable catalog, activity feed, and settings surface for indexers, download clients, and format priorities.
 
 ## Highlights
 
