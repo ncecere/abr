@@ -3,6 +3,8 @@ import { getSettings } from "@/lib/services/settings";
 import { Sidebar } from "@/ui/components/sidebar";
 import { ToastProvider } from "@/ui/components/toast-provider";
 
+export const dynamic = "force-dynamic";
+
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
   const settings = await getSettings();
 

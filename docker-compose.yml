@@ -2,6 +2,7 @@ services:
   abr:
     build: .
     container_name: abr_app
+    image: ghcr.io/ncecere/abr:v0.1.1 
     ports:
       - "3000:3000"
     environment:

@@ -9,6 +9,8 @@ export const metadata: Metadata = {
   title: "ABR · Settings",
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function SettingsPage() {
   const [settings, indexers, formats, downloadClients] = await Promise.all([
     getSettings(),
