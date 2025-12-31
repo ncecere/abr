@@ -21,10 +21,15 @@ export type SearchResult = {
   description?: string;
 };
 
-export function SearchClient() {
+type SearchClientProps = {
+  existingAsins?: string[];
+};
+
+export function SearchClient({ existingAsins = [] }: SearchClientProps) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
+  const [addedAsins, setAddedAsins] = useState<Set<string>>(() => new Set(existingAsins));
   const { showToast } = useToast();
 
   useEffect(() => {
@@ -58,6 +63,11 @@ export function SearchClient() {
           body: JSON.stringify({ asin: result.asin }),
         });
         if (!response.ok) throw new Error("Failed to add book");
+        setAddedAsins((current) => {
+          const next = new Set(current);
+          next.add(result.asin);
+          return next;
+        });
         showToast(`Queued ${result.title}`, "success");
       } catch (error) {
         showToast(error instanceof Error ? error.message : "Unable to add book", "error");
@@ -81,40 +91,43 @@ export function SearchClient() {
         {!loading && results.length === 0 && query && (
           <p className="text-sm text-muted-foreground">No matches yet.</p>
         )}
-        {results.map((result) => (
-          <Card key={result.asin}>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between gap-4 text-base">
-                <span>
-                  {result.title}{" "}
-                  {formatReleaseYear(result.publishYear, result.releaseDate) && (
-                    <span className="text-muted-foreground">
-                      ({formatReleaseYear(result.publishYear, result.releaseDate)})
-                    </span>
+        {results.map((result) => {
+          const isAdded = addedAsins.has(result.asin);
+          return (
+            <Card key={result.asin}>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between gap-4 text-base">
+                  <span>
+                    {result.title}{" "}
+                    {formatReleaseYear(result.publishYear, result.releaseDate) && (
+                      <span className="text-muted-foreground">
+                        ({formatReleaseYear(result.publishYear, result.releaseDate)})
+                      </span>
+                    )}
+                  </span>
+                  <Button size="sm" onClick={() => handleAdd(result)} disabled={isAdded}>
+                    {isAdded ? "Added" : "Add to Library"}
+                  </Button>
+                </CardTitle>
+                <CardDescription className="space-y-1">
+                  <p>{result.authors.length ? result.authors.join(", ") : "Unknown author"}</p>
+                  {result.narrators.length > 0 && (
+                    <p className="text-xs">Narrated by {result.narrators.join(", ")}</p>
                   )}
-                </span>
-                <Button size="sm" onClick={() => handleAdd(result)}>
-                  Add to Library
-                </Button>
-              </CardTitle>
-              <CardDescription className="space-y-1">
-                <p>{result.authors.length ? result.authors.join(", ") : "Unknown author"}</p>
-                {result.narrators.length > 0 && (
-                  <p className="text-xs">Narrated by {result.narrators.join(", ")}</p>
-                )}
-              </CardDescription>
-            </CardHeader>
-            {(result.runtimeSeconds || result.language || result.releaseDate) && (
-              <CardContent className="space-y-2">
-                <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                  {result.runtimeSeconds && <Badge variant="secondary">{formatRuntime(result.runtimeSeconds)}</Badge>}
-                  {result.language && <Badge variant="outline">{result.language.toUpperCase()}</Badge>}
-                  {result.releaseDate && <Badge variant="outline">Released {formatReleaseDate(result.releaseDate)}</Badge>}
-                </div>
-              </CardContent>
-            )}
-          </Card>
-        ))}
+                </CardDescription>
+              </CardHeader>
+              {(result.runtimeSeconds || result.language || result.releaseDate) && (
+                <CardContent className="space-y-2">
+                  <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                    {result.runtimeSeconds && <Badge variant="secondary">{formatRuntime(result.runtimeSeconds)}</Badge>}
+                    {result.language && <Badge variant="outline">{result.language.toUpperCase()}</Badge>}
+                    {result.releaseDate && <Badge variant="outline">Released {formatReleaseDate(result.releaseDate)}</Badge>}
+                  </div>
+                </CardContent>
+              )}
+            </Card>
+          );
+        })}
       </div>
     </div>
   );
