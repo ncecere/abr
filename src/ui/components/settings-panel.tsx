@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -119,6 +120,10 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
     ? downloadClients.find((client) => client.id === selectedMappingClientId)
     : undefined;
   const [indexerModalMode, setIndexerModalMode] = useState<"create" | "edit">("create");
+  const { theme, setTheme } = useTheme();
+  const [themeReady, setThemeReady] = useState(false);
+  useEffect(() => setThemeReady(true), []);
+  const currentTheme = themeReady && theme ? theme : "system";
   const [indexerDraft, setIndexerDraft] = useState<IndexerDraft>(() => ({
     name: "",
     baseUrl: "",
@@ -789,6 +794,21 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
                     setForm((prev) => ({ ...prev, searchIntervalMinutes: Number(event.target.value) }))
                   }
                 />
+              </div>
+              <div>
+                <Label htmlFor="theme">Theme</Label>
+                <Select value={currentTheme} onValueChange={(value) => value && setTheme(value)} disabled={!themeReady}>
+                  <SelectTrigger id="theme">
+                    <SelectValue>{currentTheme.charAt(0).toUpperCase() + currentTheme.slice(1)}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value="light">Light</SelectItem>
+                      <SelectItem value="dark">Dark</SelectItem>
+                      <SelectItem value="system">System</SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <Label>Active download client</Label>
