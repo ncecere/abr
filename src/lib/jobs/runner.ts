@@ -5,6 +5,7 @@ import { claimDueJobs, enqueueJob, markJobFailed, markJobSucceeded } from "@/lib
 import { jobHandlers } from "@/lib/jobs/handlers";
 import { Job } from "@/db/schema";
 import { JobType } from "@/lib/domain";
+import { logJobEvent } from "@/lib/logging/wide-event";
 
 const RUNNER_KEY = Symbol.for("ebr.jobRunner");
 const limit = pLimit(env.JOB_CONCURRENCY);
@@ -42,12 +43,16 @@ async function executeJob(job: Job) {
     return;
   }
 
+  const startedAt = process.hrtime();
   try {
     await handler(job);
     await markJobSucceeded(job);
+    logJobEvent({ job, durationMs: elapsedMs(startedAt), outcome: "success" });
   } catch (error) {
-    logger.error({ error, job }, "job execution failed");
-    await markJobFailed(job, error instanceof Error ? error.message : String(error));
+    const err = error instanceof Error ? error : new Error(String(error));
+    logger.error({ error: err, job }, "job execution failed");
+    await markJobFailed(job, err.message);
+    logJobEvent({ job, durationMs: elapsedMs(startedAt), outcome: "error", error: err });
   }
 }
 
@@ -66,4 +71,9 @@ function scheduleRecurringJobs() {
   setInterval(() => {
     enqueueJob("POLL_DOWNLOADS", {}, new Date());
   }, env.DOWNLOAD_POLL_INTERVAL_SECONDS * 1000);
+}
+
+function elapsedMs(start: [number, number]) {
+  const diff = process.hrtime(start);
+  return diff[0] * 1000 + diff[1] / 1_000_000;
 }

@@ -13,6 +13,7 @@ import { ensureLibraryRootSync, DEFAULT_LIBRARY_ROOT } from "@/lib/runtime/boots
 import { getBookDirectory } from "@/lib/library/paths";
 import { downloadCoverImage } from "@/lib/library/covers";
 import { logger } from "@/lib/logger";
+import { setBookContext } from "@/lib/logging/wide-event";
 
 export async function listBooks({
   state,
@@ -44,7 +45,11 @@ export async function listBooks({
 }
 
 export async function getBook(id: number) {
-  return db.query.books.findFirst({ where: (fields, { eq: eqOp }) => eqOp(fields.id, id) });
+  const book = await db.query.books.findFirst({ where: (fields, { eq: eqOp }) => eqOp(fields.id, id) });
+  if (book) {
+    setBookContext({ id: book.id, asin: book.audibleAsin, state: book.state });
+  }
+  return book;
 }
 
 export async function addBook(payload: unknown) {
@@ -54,6 +59,7 @@ export async function addBook(payload: unknown) {
   });
 
   if (existing) {
+    setBookContext({ id: existing.id, asin: existing.audibleAsin, state: existing.state });
     return existing;
   }
 
@@ -95,6 +101,8 @@ export async function addBook(payload: unknown) {
       state: "MISSING",
     })
     .returning();
+
+  setBookContext({ id: book.id, asin: book.audibleAsin, state: book.state });
 
   await emitActivity("BOOK_ADDED", `Added ${book.title}`, book.id);
   await enqueueJob("SEARCH_BOOK", { bookId: book.id });

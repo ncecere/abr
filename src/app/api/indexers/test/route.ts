@@ -1,12 +1,13 @@
 import { NextRequest } from "next/server";
 import { success, problem } from "@/lib/http/responses";
 import { queryNewznab } from "@/lib/services/newznab";
+import { withRouteLogging } from "@/lib/logging/wide-event";
 
 const DEFAULT_AUDIOBOOK_CATEGORIES = [3030, 3035, 3036, 3040];
 
 export const runtime = "nodejs";
 
-export async function POST(request: NextRequest) {
+export const POST = withRouteLogging("indexers#test", async (request: NextRequest) => {
   try {
     const payload = await request.json();
     if (!payload?.baseUrl || !payload?.apiKey) {
@@ -28,7 +29,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     return problem(400, "Indexer test failed", error instanceof Error ? error.message : String(error));
   }
-}
+});
 
 function normalizeCategories(value: unknown) {
   const fromInput: number[] = Array.isArray(value)

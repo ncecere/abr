@@ -2,15 +2,16 @@ import { NextRequest } from "next/server";
 import { success, problem } from "@/lib/http/responses";
 import { getSettings, updateSettings } from "@/lib/services/settings";
 import { settingsUpdateSchema } from "@/lib/validation/schemas";
+import { withRouteLogging } from "@/lib/logging/wide-event";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export const GET = withRouteLogging("settings#index", async (_request: NextRequest) => {
   const data = await getSettings();
   return success(data);
-}
+});
 
-export async function PUT(request: NextRequest) {
+export const PUT = withRouteLogging("settings#update", async (request: NextRequest) => {
   try {
     const payload = settingsUpdateSchema.parse(await request.json());
     const updated = await updateSettings(payload);
@@ -18,4 +19,4 @@ export async function PUT(request: NextRequest) {
   } catch (error) {
     return problem(400, "Failed to update settings", error instanceof Error ? error.message : String(error));
   }
-}
+});

@@ -1,10 +1,11 @@
 import { Buffer } from "node:buffer";
 import { NextRequest } from "next/server";
 import { success, problem } from "@/lib/http/responses";
+import { withRouteLogging } from "@/lib/logging/wide-event";
 
 export const runtime = "nodejs";
 
-export async function POST(request: NextRequest) {
+export const POST = withRouteLogging("downloadClients#test", async (request: NextRequest) => {
   try {
     const payload = await request.json();
     if (!payload?.type || !payload?.host || !payload?.port) {
@@ -23,7 +24,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     return problem(400, "Download client test failed", error instanceof Error ? error.message : String(error));
   }
-}
+});
 
 async function testSabnzbd(config: any) {
   const baseUrl = normalizeHost(config.host, config.port, true);

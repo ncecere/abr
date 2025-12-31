@@ -3,10 +3,14 @@ import { db } from "@/db/client";
 import { downloadClientPathMappings } from "@/db/schema";
 import { success, problem } from "@/lib/http/responses";
 import { deleteDownloadClientPathMapping, updateDownloadClientPathMapping } from "@/lib/services/download-clients";
+import { withRouteLogging } from "@/lib/logging/wide-event";
 
 export const runtime = "nodejs";
 
-export async function PUT(request: NextRequest, { params }: { params: Promise<{ mappingId: string }> }) {
+export const PUT = withRouteLogging("downloadClients#updatePathMapping", async (
+  request: NextRequest,
+  { params }: { params: Promise<{ mappingId: string }> },
+) => {
   try {
     const { mappingId } = await params;
     const id = Number(mappingId);
@@ -19,9 +23,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   } catch (error) {
     return problem(400, "Failed to update path mapping", error instanceof Error ? error.message : String(error));
   }
-}
+});
 
-export async function DELETE(_: NextRequest, { params }: { params: Promise<{ mappingId: string }> }) {
+export const DELETE = withRouteLogging("downloadClients#deletePathMapping", async (
+  _: NextRequest,
+  { params }: { params: Promise<{ mappingId: string }> },
+) => {
   const { mappingId } = await params;
   const id = Number(mappingId);
   if (!Number.isInteger(id) || id <= 0) {
@@ -37,4 +44,5 @@ export async function DELETE(_: NextRequest, { params }: { params: Promise<{ map
 
   await deleteDownloadClientPathMapping(id);
   return success({ ok: true });
-}
+});
+

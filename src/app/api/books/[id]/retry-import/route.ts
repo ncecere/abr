@@ -5,11 +5,15 @@ import { db } from "@/db/client";
 import { books, downloads } from "@/db/schema";
 import { enqueueJob } from "@/lib/jobs/queue";
 import { problem, success } from "@/lib/http/responses";
+import { withRouteLogging } from "@/lib/logging/wide-event";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const POST = withRouteLogging("books#retryImport", async (
+  _: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) => {
   const { id } = await params;
   const bookId = Number(id);
   if (!Number.isInteger(bookId) || bookId <= 0) {
@@ -34,4 +38,5 @@ export async function POST(_: NextRequest, { params }: { params: Promise<{ id: s
   await enqueueJob("IMPORT_DOWNLOAD", { downloadId: download.id });
 
   return success({ downloadId: download.id });
-}
+});
+

@@ -1,7 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getBook } from "@/lib/services/books";
+import { withRouteLogging } from "@/lib/logging/wide-event";
 
 const MIME_MAP: Record<string, string> = {
   ".jpg": "image/jpeg",
@@ -13,7 +14,10 @@ const MIME_MAP: Record<string, string> = {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export const GET = withRouteLogging("books#cover", async (
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) => {
   const { id } = await params;
   const book = await getBook(Number(id));
   if (!book?.coverPath) {
@@ -33,4 +37,4 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   } catch {
     return new NextResponse(undefined, { status: 404 });
   }
-}
+});

@@ -7,6 +7,7 @@
 | `DATABASE_PATH` | Absolute or relative path for the SQLite file. | `var/data/abr.sqlite` |
 | `DOWNLOADS_DIR` | Directory where downloader clients deposit completed content for import. | `var/downloads` |
 | `LIBRARY_ROOT` | Optional override for the managed `audiobook/` tree. If omitted we fall back to `var/library`. | — |
+| `SERVICE_NAME`, `SERVICE_VERSION`, `DEPLOYMENT_ID`, `REGION` | Identifiers stamped onto every wide-event log entry for observability. | `abr`, `0.0.0`, *(optional)*, *(optional)* |
 | `AUDIBLE_CLIENT_ID` / `AUDIBLE_CLIENT_SECRET` | Credentials for the Audible `catalog:read` API scope. Leave blank to rely solely on the public endpoints. | *(optional)* |
 | `AUDIBLE_MARKETPLACE` / `AUDIBLE_LOCALE` | Marketplace and locale parameters when OAuth is enabled. | `us` / `en-US` |
 | `AUDIBLE_REGION` | Region suffix (`us`, `ca`, `uk`, `de`, …) for the public endpoints and Audnexus/Audimeta. | `us` |
@@ -15,8 +16,10 @@
 | `JOB_CONCURRENCY` | Number of concurrent job executions per process. | `3` |
 | `SEARCH_INTERVAL_MINUTES` | Scheduler cadence for `SEARCH_MISSING_BOOKS`. | `60` |
 | `DOWNLOAD_POLL_INTERVAL_SECONDS` | Poll frequency for downloader status checks. | `45` |
+| `WIDE_LOG_SAMPLE_RATE`, `WIDE_LOG_SLOW_REQUEST_MS` | Tail-sampling controls for wide-event logging. | `0.05`, `2000` |
 
-`.env` should only be used for bootstrap/runtime values. All operator-facing configuration (port binding, download client selection, format priorities, indexer credentials) is edited through the Settings UI and persisted to the database.
+`.env` should only be used for bootstrap/runtime values.
+ All operator-facing configuration (port binding, download client selection, format priorities, indexer credentials) is edited through the Settings UI and persisted to the database.
 
 ## Settings semantics
 

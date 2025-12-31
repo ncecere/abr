@@ -10,6 +10,10 @@ const envSchema = z
     DATABASE_PATH: z.string().default("var/data/abr.sqlite"),
     DOWNLOADS_DIR: z.string().default("var/downloads"),
     LIBRARY_ROOT: z.string().optional(),
+    SERVICE_NAME: z.string().default("abr"),
+    SERVICE_VERSION: z.string().default("0.0.0"),
+    DEPLOYMENT_ID: z.string().optional(),
+    REGION: z.string().optional(),
     AUDIBLE_CLIENT_ID: z.string().default(""),
     AUDIBLE_CLIENT_SECRET: z.string().default(""),
     AUDIBLE_MARKETPLACE: z.string().default("us"),
@@ -21,6 +25,8 @@ const envSchema = z
     JOB_CONCURRENCY: z.coerce.number().int().positive().default(3),
     SEARCH_INTERVAL_MINUTES: z.coerce.number().int().positive().default(60),
     DOWNLOAD_POLL_INTERVAL_SECONDS: z.coerce.number().int().positive().default(45),
+    WIDE_LOG_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(0.05),
+    WIDE_LOG_SLOW_REQUEST_MS: z.coerce.number().int().nonnegative().default(2000),
   })
   .transform((values) => ({
     ...values,

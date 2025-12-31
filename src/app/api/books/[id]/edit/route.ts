@@ -7,22 +7,29 @@ import { books } from "@/db/schema";
 import { getBook } from "@/lib/services/books";
 import { ensureLibraryRootSync, DEFAULT_LIBRARY_ROOT } from "@/lib/runtime/bootstrap";
 import { getBookDirectory } from "@/lib/library/paths";
+import { withRouteLogging } from "@/lib/logging/wide-event";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
-export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const GET = withRouteLogging("books#editForm", async (
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) => {
   const { id } = await params;
   const book = await getBook(Number(id));
   if (!book) {
     return NextResponse.json({ error: "Book not found" }, { status: 404 });
   }
   return NextResponse.json({ data: { title: book.title, authors: JSON.parse(book.authorsJson ?? "[]") } });
-}
+});
 
-export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const POST = withRouteLogging("books#edit", async (
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) => {
   const { id } = await params;
   const book = await getBook(Number(id));
   if (!book) {
@@ -59,4 +66,4 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     .where(eq(books.id, book.id));
 
   return NextResponse.json({ data: { title, authors } });
-}
+});
