@@ -19,11 +19,15 @@ export function startJobRunner() {
 
   (globalThis as any)[RUNNER_KEY] = true;
   runnerActive = true;
+  logger.info("job runner started");
   scheduleRecurringJobs();
 
   const tick = async () => {
     try {
       const jobs = await claimDueJobs(env.JOB_CONCURRENCY);
+      if (jobs.length) {
+        logger.info({ count: jobs.length }, "processing queued jobs");
+      }
       await Promise.all(jobs.map((job) => limit(() => executeJob(job))));
     } catch (error) {
       logger.error({ error }, "job runner tick failed");
@@ -61,14 +65,17 @@ export function isJobRunnerRunning() {
 }
 
 function scheduleRecurringJobs() {
+  logger.info("scheduling recurring jobs");
   enqueueJob("SEARCH_MISSING_BOOKS", {});
   enqueueJob("POLL_DOWNLOADS", {});
 
   setInterval(() => {
+    logger.info("queueing SEARCH_MISSING_BOOKS job");
     enqueueJob("SEARCH_MISSING_BOOKS", {}, new Date());
   }, env.SEARCH_INTERVAL_MINUTES * 60_000);
 
   setInterval(() => {
+    logger.info("queueing POLL_DOWNLOADS job");
     enqueueJob("POLL_DOWNLOADS", {}, new Date());
   }, env.DOWNLOAD_POLL_INTERVAL_SECONDS * 1000);
 }

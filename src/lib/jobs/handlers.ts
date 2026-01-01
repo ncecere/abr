@@ -98,7 +98,7 @@ async function handleGrabRelease(job: Job) {
 }
 
 async function handlePollDownloads() {
-  logger.debug("polling download client statuses");
+  logger.info("polling download client statuses");
 
   const rawActive = await db
     .select()
@@ -118,7 +118,7 @@ async function handlePollDownloads() {
   const pathMappingCache = new Map<number, DownloadClientPathMapping[]>();
 
   for (const download of deduped.reverse()) {
-    logger.debug({ downloadId: download.id, status: download.status }, "checking download status");
+    logger.info({ downloadId: download.id, status: download.status }, "checking download status");
     const client = await db.query.downloadClients.findFirst({
       where: (fields, { eq }) => eq(fields.id, download.downloadClientId),
     });
@@ -172,7 +172,7 @@ async function handlePollDownloads() {
     }
   }
 
-  logger.debug({ processed: deduped.length }, "poll downloads cycle complete");
+  logger.info({ processed: deduped.length }, "poll downloads cycle complete");
 }
 
 async function handleImportDownload(job: Job) {

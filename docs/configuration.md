@@ -15,7 +15,7 @@
 | `NEWZNAB_REQUEST_TIMEOUT_MS` | HTTP timeout for Newznab queries. | `10000` |
 | `JOB_CONCURRENCY` | Number of concurrent job executions per process. | `3` |
 | `SEARCH_INTERVAL_MINUTES` | Scheduler cadence for `SEARCH_MISSING_BOOKS`. | `60` |
-| `DOWNLOAD_POLL_INTERVAL_SECONDS` | Poll frequency for downloader status checks. | `45` |
+| `DOWNLOAD_POLL_INTERVAL_SECONDS` | Poll frequency for downloader status checks. | `180` |
 | `WIDE_LOG_SAMPLE_RATE`, `WIDE_LOG_SLOW_REQUEST_MS` | Tail-sampling controls for wide-event logging. | `0.05`, `2000` |
 
 `.env` should only be used for bootstrap/runtime values.

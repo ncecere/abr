@@ -24,7 +24,7 @@ const envSchema = z
     NEWZNAB_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
     JOB_CONCURRENCY: z.coerce.number().int().positive().default(3),
     SEARCH_INTERVAL_MINUTES: z.coerce.number().int().positive().default(60),
-    DOWNLOAD_POLL_INTERVAL_SECONDS: z.coerce.number().int().positive().default(45),
+    DOWNLOAD_POLL_INTERVAL_SECONDS: z.coerce.number().int().positive().default(180),
     WIDE_LOG_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(0.05),
     WIDE_LOG_SLOW_REQUEST_MS: z.coerce.number().int().nonnegative().default(2000),
   })

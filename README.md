@@ -66,7 +66,7 @@ Key environment variables live in `.env` and are parsed by `src/config/env.ts`:
 | `DOWNLOADS_DIR` | Where SABnzbd/NZBGet drops finished jobs | `var/downloads` |
 | `LIBRARY_ROOT` | Parent directory for the managed `audiobook/` tree | `var/library` |
 | `SERVICE_NAME`, `SERVICE_VERSION`, `DEPLOYMENT_ID`, `REGION` | Metadata stamped on wide-event logs | `abr`, `0.0.0`, *(optional)*, *(optional)* |
-| `NEWZNAB_REQUEST_TIMEOUT_MS`, `JOB_CONCURRENCY`, `SEARCH_INTERVAL_MINUTES`, `DOWNLOAD_POLL_INTERVAL_SECONDS` | Operational tuning knobs | see `.env.example` |
+| `NEWZNAB_REQUEST_TIMEOUT_MS`, `JOB_CONCURRENCY`, `SEARCH_INTERVAL_MINUTES`, `DOWNLOAD_POLL_INTERVAL_SECONDS` | Operational tuning knobs | see `.env.example` (poll interval defaults to 180s forced cadence) |
 | `WIDE_LOG_SAMPLE_RATE`, `WIDE_LOG_SLOW_REQUEST_MS` | Tail-sampling + “slow request” thresholds for structured logs | `0.05`, `2000` |
 
 Operator-level settings (port, active downloader, library root, indexers, formats, download clients) are persisted in the database via the Settings UI and should not be hard-coded in `.env`.
