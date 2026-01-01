@@ -39,11 +39,6 @@ export class SabnzbdClient implements DownloadClientAdapter {
   async getStatus(id: string): Promise<DownloadStatusPayload> {
     const queue = await this.fetchQueue();
     const slot = queue.queue?.slots?.find((entry: any) => entry.nzo_id === id);
-    if (slot) {
-      return {
-        status: slot.status === "Completed" ? "completed" : "downloading",
-      };
-    }
 
     const historyItem = await this.findHistoryItem(id);
     if (historyItem) {
@@ -52,6 +47,12 @@ export class SabnzbdClient implements DownloadClientAdapter {
         status,
         outputPath: historyItem.storage,
         error: historyItem.fail_message,
+      };
+    }
+
+    if (slot) {
+      return {
+        status: slot.status === "Completed" ? "completed" : "downloading",
       };
     }
 
