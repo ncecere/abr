@@ -11,3 +11,10 @@ export function getBookDirectory(authors: string[], title: string, libraryRoot: 
   const titleFolder = sanitizeSegment(title);
   return path.join(libraryRoot, "audiobook", authorFolder, titleFolder);
 }
+
+export function getMergedFileName(authors: string[], title: string, extension: string) {
+  const primaryAuthor = sanitizeSegment(authors[0] ?? "unknown-author");
+  const titleSegment = sanitizeSegment(title);
+  const ext = extension.startsWith(".") ? extension.slice(1) : extension;
+  return `${titleSegment}-${primaryAuthor}.${ext}`;
+}

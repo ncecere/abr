@@ -93,7 +93,7 @@ Open the **Settings** tab in the UI to manage everything outside of `.env`.
 1. **Search/Add** – The Search page queries Audible (`searchAudiobooks`) with built-in rate limiting. Adding a result stores the ASIN, narrators, runtime, release date, etc., using either the OAuth API (when configured) or the public Audible/Audnexus/Audimeta endpoints.
 2. **Automatic search** – The job runner iterates enabled Newznab indexers, tries strict queries first (`m4b -part -disc -cd`), and ignores multi-part or suspiciously small releases before recording the best match.
 3. **Download** – Matching releases are queued to the active SABnzbd/NZBGet client under the `audiobooks` category. Polling watches for completion and resolves any remote-to-local path mappings.
-4. **Import** – Completed downloads are scanned for the highest-priority audio format. Single-file releases are moved into `audiobook/{Author}/{Title}` and recorded in `book_files`. If multiple matching tracks are found, the importer queues a merge job that uses `ffmpeg` to concatenate the tracks before retrying the import; failures are logged and the search is requeued if merging cannot complete.
+4. **Import** – Once the downloader marks a release complete, ABR applies any configured path mappings, logs the resolved download directory, and pre-scans it for audio/video tracks. Single-file releases move straight into `audiobook/{Author}/{Title}`. If the scan finds multiple tracks of the same extension, ABR queues a merge job (via `ffmpeg`) to concatenate them before retrying the import; failures are logged and the search is requeued if merging cannot complete.
 
 ## Testing
 

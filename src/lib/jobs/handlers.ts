@@ -1,6 +1,7 @@
 import { asc, desc, eq, ne } from "drizzle-orm";
 import fs from "node:fs/promises";
 import path from "node:path";
+import os from "node:os";
 import slugify from "@sindresorhus/slugify";
 import { env } from "@/config";
 import { db } from "@/db/client";
@@ -21,12 +22,16 @@ import { DownloaderType, JobType } from "@/lib/domain";
 import { importFileForBook, MultiFileImportError } from "@/lib/importer";
 import { createDownloadClient } from "@/lib/downloaders";
 import { listDownloadClientPathMappings, applyDownloadClientPathMappings } from "@/lib/services/download-clients";
+import { getBookDirectory, getMergedFileName } from "@/lib/library/paths";
 import { enqueueJob } from "@/lib/jobs/queue";
 import { JobPayloadMap } from "@/lib/jobs/types";
 import { ensureLibraryRootSync } from "@/lib/runtime/bootstrap";
 import { runAutomaticSearch } from "@/lib/services/automatic-search";
 import { logger } from "@/lib/logger";
 import { mergeTracksWithFfmpeg } from "@/lib/media/merge";
+
+
+type BookRecord = typeof books.$inferSelect;
 
 const MULTI_TRACK_EXTENSIONS = new Set([
   "mp4",
@@ -190,7 +195,7 @@ async function updateDownloadStatus(
 
   const status = await adapter.getStatus(download.downloaderItemId);
   if (status.status === download.status && !status.outputPath) {
-    const fallbackPath = await findLocalDownloadPath(download.bookId);
+    const fallbackPath = await findLocalDownloadPath(download.bookId, client);
     if (fallbackPath) {
       status.status = "completed";
       status.outputPath = fallbackPath;
@@ -236,13 +241,29 @@ async function updateDownloadStatus(
   return "pending";
 }
 
-async function findLocalDownloadPath(bookId: number) {
-  const base = path.resolve(env.DOWNLOADS_DIR, "downloads", "complete");
-  const segments = await fs.readdir(base);
+async function findLocalDownloadPath(bookId: number, client?: typeof downloadClients.$inferSelect | null) {
+  const roots: string[] = [];
+  roots.push(path.resolve(env.DOWNLOADS_DIR, "downloads", "complete"));
+  if (client) {
+    const mappings = await listDownloadClientPathMappings(client.id);
+    for (const mapping of mappings) {
+      roots.push(mapping.localPath);
+    }
+  }
+
   const prefix = `${bookId}-`.toLowerCase();
-  for (const entry of segments) {
-    if (entry.toLowerCase().startsWith(prefix)) {
-      return path.join(base, entry);
+  for (const root of roots) {
+    try {
+      const segments = await fs.readdir(root);
+      for (const entry of segments) {
+        if (entry.toLowerCase().startsWith(prefix)) {
+          return path.join(root, entry);
+        }
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        logger.warn({ root, error }, "failed to read download directory");
+      }
     }
   }
   return undefined;
@@ -256,6 +277,27 @@ async function handleImportDownload(job: Job) {
   const book = await db.query.books.findFirst({ where: (fields, { eq }) => eq(fields.id, download.bookId) });
   if (!book) return;
 
+  let client: typeof downloadClients.$inferSelect | null = null;
+  if (download.downloadClientId) {
+    client = (await db.query.downloadClients.findFirst({ where: (fields, { eq }) => eq(fields.id, download.downloadClientId) })) ?? null;
+  }
+
+  let resolvedOutputPath = download.outputPath;
+  if (client) {
+    const mappings = await listDownloadClientPathMappings(client.id);
+    if (mappings.length) {
+      resolvedOutputPath = applyDownloadClientPathMappings(resolvedOutputPath, mappings);
+    }
+  }
+
+  logger.info({
+    downloadId: download.id,
+    status: download.status,
+    originalOutputPath: download.outputPath,
+    resolvedOutputPath,
+    bookId: download.bookId,
+  }, "import download started");
+
   const currentSettings = await db.query.settings.findFirst();
   const libraryRoot = currentSettings?.libraryRoot ?? "var/library";
   await ensureLibraryRootSync(libraryRoot);
@@ -265,36 +307,10 @@ async function handleImportDownload(job: Job) {
     orderBy: (fields, { asc }) => asc(fields.priority),
   });
 
-  const importPath = await resolveImportSourcePath(download.outputPath);
+  const importPath = await resolveImportSourcePath(resolvedOutputPath);
 
-  const preflightMultiTrack = await detectMultiTrackInDirectory(importPath);
-  if (!preflightMultiTrack) {
-    logger.info({ downloadId: download.id, importPath }, "pre-import track scan: no tracks detected");
-  } else {
-    logger.info({
-      downloadId: download.id,
-      importPath,
-      trackCount: preflightMultiTrack.files.length,
-      sample: preflightMultiTrack.files.slice(0, MULTI_TRACK_SAMPLE_LIMIT),
-      extension: preflightMultiTrack.extension,
-    }, "pre-import track scan");
-  }
-
-  if (preflightMultiTrack && preflightMultiTrack.files.length > 1) {
-    const mergeExtension =
-      preflightMultiTrack.extension ??
-      path.extname(preflightMultiTrack.files[0] ?? "")?.replace(/^\./, "").toLowerCase() ??
-      "m4b";
-    await scheduleMergeTracks(
-      download,
-      new MultiFileImportError(
-        book.id,
-        book.title,
-        `${mergeExtension.toUpperCase()} tracks`,
-        preflightMultiTrack.files,
-        mergeExtension,
-      ),
-    );
+  const mergeQueued = await ensureSingleTrackBeforeImport(download, book, importPath);
+  if (mergeQueued) {
     return;
   }
 
@@ -318,18 +334,18 @@ async function handleImportDownload(job: Job) {
   }
 
   if (download.downloaderItemId) {
-    const client = await db.query.downloadClients.findFirst({
-      where: (fields, { eq }) => eq(fields.id, download.downloadClientId),
-    });
-    if (client) {
+    const cleanupClient = client ?? (download.downloadClientId
+      ? await db.query.downloadClients.findFirst({ where: (fields, { eq }) => eq(fields.id, download.downloadClientId) })
+      : null);
+    if (cleanupClient) {
       const adapter = createDownloadClient({
-        type: client.type as DownloaderType,
-        host: client.host,
-        port: client.port,
-        apiKey: client.apiKey ?? undefined,
-        username: client.username ?? undefined,
-        password: client.password ?? undefined,
-        category: client.category,
+        type: cleanupClient.type as DownloaderType,
+        host: cleanupClient.host,
+        port: cleanupClient.port,
+        apiKey: cleanupClient.apiKey ?? undefined,
+        username: cleanupClient.username ?? undefined,
+        password: cleanupClient.password ?? undefined,
+        category: cleanupClient.category,
       });
       if (typeof adapter.cleanup === "function") {
         try {
@@ -342,6 +358,52 @@ async function handleImportDownload(job: Job) {
   }
 }
 
+type PreflightDeps = {
+  detect?: typeof detectMultiTrackInDirectory;
+  schedule?: typeof scheduleMergeTracks;
+};
+
+export async function ensureSingleTrackBeforeImport(
+  download: Download,
+  book: BookRecord,
+  importPath: string,
+  deps: PreflightDeps = {},
+) {
+  const detectFn = deps.detect ?? detectMultiTrackInDirectory;
+  const scheduleFn = deps.schedule ?? scheduleMergeTracks;
+
+  const scan = await detectFn(importPath);
+  if (!scan) {
+    logger.info({ downloadId: download.id, importPath }, "pre-import track scan: no tracks detected");
+    return false;
+  }
+
+  logger.info({
+    downloadId: download.id,
+    importPath,
+    trackCount: scan.files.length,
+    sample: scan.files.slice(0, MULTI_TRACK_SAMPLE_LIMIT),
+    extension: scan.extension,
+  }, "pre-import track scan");
+
+  if (scan.files.length > 1) {
+    const mergeExtension = scan.extension ?? path.extname(scan.files[0] ?? "")?.replace(/^\./, "").toLowerCase() ?? "m4b";
+    await scheduleFn(
+      download,
+      new MultiFileImportError(
+        book.id,
+        book.title,
+        `${mergeExtension.toUpperCase()} tracks`,
+        scan.files,
+        mergeExtension,
+      ),
+    );
+    return true;
+  }
+
+  return false;
+}
+
 async function handleMergeTracks(job: Job) {
   const payload = parsePayload(job, "MERGE_TRACKS");
   const download = await db.query.downloads.findFirst({ where: (fields, { eq }) => eq(fields.id, payload.downloadId) });
@@ -350,17 +412,18 @@ async function handleMergeTracks(job: Job) {
     return;
   }
 
-  const outputDir = path.dirname(payload.files[0]);
-  const baseName = slugify(payload.bookTitle, { separator: "-" }) || `book-${payload.bookId}`;
-  let outputPath = path.join(outputDir, `${baseName}.${payload.extension}`);
-  let counter = 1;
-  while (await pathExists(outputPath)) {
-    outputPath = path.join(outputDir, `${baseName}-${counter}.${payload.extension}`);
-    counter += 1;
+  const book = await db.query.books.findFirst({ where: (fields, { eq }) => eq(fields.id, payload.bookId) });
+  const settings = await db.query.settings.findFirst();
+  if (!book || !settings) {
+    logger.error({ downloadId: download.id }, "merge job missing book or settings context");
+    return;
   }
 
+  const tempOutputDir = await fs.mkdtemp(path.join(os.tmpdir(), "abr-merged-output-"));
+  const tempOutputPath = path.join(tempOutputDir, getMergedFileName(JSON.parse(book.authorsJson ?? "[]"), book.title, payload.extension));
+
   try {
-    await mergeTracksWithFfmpeg(payload.files, outputPath);
+    await mergeTracksWithFfmpeg(payload.files, tempOutputPath);
   } catch (error) {
     logger.error({ downloadId: download.id, error }, "failed to merge tracks");
     await emitActivity("ERROR", `Failed to merge tracks: ${(error as Error).message}`, payload.bookId);
@@ -368,6 +431,15 @@ async function handleMergeTracks(job: Job) {
       .update(downloads)
       .set({ status: "failed", error: "Track merge failed", updatedAt: new Date() })
       .where(eq(downloads.id, download.id));
+    await enqueueJob("SEARCH_BOOK", { bookId: payload.bookId }, new Date(Date.now() + 60_000));
+    return;
+  }
+
+  await db
+    .update(downloads)
+    .set({ outputPath: tempOutputPath, status: "downloading", error: null, updatedAt: new Date() })
+    .where(eq(downloads.id, download.id));
+
     await enqueueJob("SEARCH_BOOK", { bookId: payload.bookId }, new Date(Date.now() + 60_000));
     return;
   }
@@ -393,7 +465,13 @@ async function handleMergeTracks(job: Job) {
   await enqueueJob("IMPORT_DOWNLOAD", { downloadId: download.id }, new Date(Date.now() + 5_000));
 }
 
-async function scheduleMergeTracks(download: Download, error: MultiFileImportError) {
+export async function scheduleMergeTracks(download: Download, error: MultiFileImportError) {
+  const book = await db.query.books.findFirst({ where: (fields, { eq }) => eq(fields.id, error.bookId) });
+  if (!book) {
+    logger.error({ downloadId: download.id, bookId: error.bookId }, "missing book context for merge job");
+    return;
+  }
+
   await db
     .update(downloads)
     .set({ status: "downloading", error: "Merging multi-track release", updatedAt: new Date() })
@@ -445,7 +523,7 @@ type TrackScanResult = {
   extension?: string;
 };
 
-async function detectMultiTrackInDirectory(targetPath: string): Promise<TrackScanResult | null> {
+export async function detectMultiTrackInDirectory(targetPath: string): Promise<TrackScanResult | null> {
   try {
     const files = await collectTrackFiles(targetPath);
     if (!files.length) {
@@ -457,8 +535,13 @@ async function detectMultiTrackInDirectory(targetPath: string): Promise<TrackSca
       if (!file.extension) continue;
       extensionCounts.set(file.extension, (extensionCounts.get(file.extension) ?? 0) + 1);
     }
-    const dominant = [...extensionCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
-    return { files: sorted.map((file) => file.path), extension: dominant };
+    const dominantEntry = [...extensionCounts.entries()].sort((a, b) => b[1] - a[1]).find(([, count]) => count > 1);
+    if (!dominantEntry) {
+      return null;
+    }
+    const [dominant] = dominantEntry;
+    const dominantFiles = sorted.filter((file) => file.extension === dominant).map((file) => file.path);
+    return { files: dominantFiles, extension: dominant };
   } catch (error) {
     logger.warn({ targetPath, error }, "failed to scan directory for multi-track files");
     return null;
