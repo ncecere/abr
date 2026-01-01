@@ -6,6 +6,7 @@ export type JobPayloadMap = {
   GRAB_RELEASE: { releaseId: number };
   POLL_DOWNLOADS: Record<string, never>;
   IMPORT_DOWNLOAD: { downloadId: number };
+  WATCH_DOWNLOAD: { downloadId: number };
 };
 
 export type JobPayload<TType extends JobType = JobType> = JobPayloadMap[TType];

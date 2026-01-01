@@ -26,6 +26,7 @@ export const JOB_TYPES = [
   "GRAB_RELEASE",
   "POLL_DOWNLOADS",
   "IMPORT_DOWNLOAD",
+  "WATCH_DOWNLOAD",
 ] as const;
 export type JobType = (typeof JOB_TYPES)[number];
 

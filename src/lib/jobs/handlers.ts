@@ -1,4 +1,7 @@
 import { asc, desc, eq, ne } from "drizzle-orm";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { env } from "@/config";
 import { db } from "@/db/client";
 import {
   books,
@@ -9,7 +12,7 @@ import {
   releases,
   settings,
 } from "@/db/schema";
-import type { DownloadClientPathMapping } from "@/db/schema";
+import type { DownloadClientPathMapping, Download } from "@/db/schema";
 import { Job } from "@/db/schema";
 
 import { emitActivity } from "@/lib/activity";
@@ -30,6 +33,7 @@ export const jobHandlers: Record<JobType, (job: Job) => Promise<void>> = {
   GRAB_RELEASE: (job) => handleGrabRelease(job),
   POLL_DOWNLOADS: () => handlePollDownloads(),
   IMPORT_DOWNLOAD: (job) => handleImportDownload(job),
+  WATCH_DOWNLOAD: (job) => handleWatchDownload(job),
 };
 
 async function handleSearchBook(job: Job) {
@@ -86,15 +90,18 @@ async function handleGrabRelease(job: Job) {
 
   const downloadId = await adapter.enqueue(release.link, { title: book.title, bookId: book.id });
 
-  await db.insert(downloads).values({
-    bookId: book.id,
-    downloadClientId: client.id,
-    downloaderItemId: downloadId,
-    status: "downloading",
-  });
+  const [download] = await db
+    .insert(downloads)
+    .values({
+      bookId: book.id,
+      downloadClientId: client.id,
+      downloaderItemId: downloadId,
+      status: "downloading",
+    })
+    .returning({ id: downloads.id });
 
   await emitActivity("DOWNLOAD_STARTED", `Download started (${client.name})`, book.id);
-  await enqueueJob("POLL_DOWNLOADS", {});
+  await enqueueJob("WATCH_DOWNLOAD", { downloadId: download.id }, new Date(Date.now() + 15_000));
 }
 
 async function handlePollDownloads() {
@@ -119,60 +126,109 @@ async function handlePollDownloads() {
 
   for (const download of deduped.reverse()) {
     logger.info({ downloadId: download.id, status: download.status }, "checking download status");
-    const client = await db.query.downloadClients.findFirst({
-      where: (fields, { eq }) => eq(fields.id, download.downloadClientId),
-    });
-    if (!client) continue;
+    await updateDownloadStatus(download, pathMappingCache);
+  }
 
-    const adapter = createDownloadClient({
-      type: client.type as DownloaderType,
-      host: client.host,
-      port: client.port,
-      apiKey: client.apiKey ?? undefined,
-      username: client.username ?? undefined,
-      password: client.password ?? undefined,
-      category: client.category,
-    });
 
-    const status = await adapter.getStatus(download.downloaderItemId);
-    if (status.status === download.status && !status.outputPath) {
-      continue;
-    }
+  logger.info({ processed: deduped.length }, "poll downloads cycle complete");
+}
 
-    let resolvedOutputPath = status.outputPath;
-    if (status.outputPath) {
-      let mappings = pathMappingCache.get(client.id);
-      if (mappings === undefined) {
-        mappings = await listDownloadClientPathMappings(client.id);
-        pathMappingCache.set(client.id, mappings);
-      }
-      if (mappings.length) {
-        resolvedOutputPath = applyDownloadClientPathMappings(status.outputPath, mappings);
-      }
-    }
+async function handleWatchDownload(job: Job) {
+  const payload = parsePayload(job, "WATCH_DOWNLOAD");
+  const download = await db.query.downloads.findFirst({ where: (fields, { eq }) => eq(fields.id, payload.downloadId) });
+  if (!download) {
+    return;
+  }
+  if (download.status === "completed" || download.status === "failed") {
+    return;
+  }
 
-    const updateWhere = download.downloaderItemId
-      ? eq(downloads.downloaderItemId, download.downloaderItemId)
-      : eq(downloads.id, download.id);
+  logger.info({ downloadId: download.id }, "watch job polling download");
+  const result = await updateDownloadStatus(download, new Map());
+  if (result === "pending") {
+    await enqueueJob("WATCH_DOWNLOAD", { downloadId: download.id }, new Date(Date.now() + 15_000));
+  }
+}
 
-    await db
-      .update(downloads)
-      .set({ status: status.status, outputPath: resolvedOutputPath, error: status.error, updatedAt: new Date() })
-      .where(updateWhere);
+async function updateDownloadStatus(
+  download: Download,
+  pathMappingCache: Map<number, DownloadClientPathMapping[]>,
+): Promise<"pending" | "completed" | "failed"> {
+  const client = await db.query.downloadClients.findFirst({
+    where: (fields, { eq }) => eq(fields.id, download.downloadClientId),
+  });
+  if (!client) {
+    return "failed";
+  }
 
-    if (status.status === "completed" && resolvedOutputPath) {
-      logger.info({ downloadId: download.id }, "download completed; queued import job");
-      await emitActivity("DOWNLOAD_COMPLETED", "Download completed", download.bookId);
-      await enqueueJob("IMPORT_DOWNLOAD", { downloadId: download.id });
-    }
+  const adapter = createDownloadClient({
+    type: client.type as DownloaderType,
+    host: client.host,
+    port: client.port,
+    apiKey: client.apiKey ?? undefined,
+    username: client.username ?? undefined,
+    password: client.password ?? undefined,
+    category: client.category,
+  });
 
-    if (status.status === "failed") {
-      logger.warn({ downloadId: download.id, error: status.error }, "download failed");
-      await emitActivity("ERROR", status.error ?? "Download failed", download.bookId);
+  const status = await adapter.getStatus(download.downloaderItemId);
+  if (status.status === download.status && !status.outputPath) {
+    const fallbackPath = await findLocalDownloadPath(download.bookId);
+    if (fallbackPath) {
+      status.status = "completed";
+      status.outputPath = fallbackPath;
+    } else {
+      return "pending";
     }
   }
 
-  logger.info({ processed: deduped.length }, "poll downloads cycle complete");
+  let resolvedOutputPath = status.outputPath;
+  if (status.outputPath) {
+    let mappings = pathMappingCache.get(client.id);
+    if (mappings === undefined) {
+      mappings = await listDownloadClientPathMappings(client.id);
+      pathMappingCache.set(client.id, mappings);
+    }
+    if (mappings.length) {
+      resolvedOutputPath = applyDownloadClientPathMappings(status.outputPath, mappings);
+    }
+  }
+
+  const updateWhere = download.downloaderItemId
+    ? eq(downloads.downloaderItemId, download.downloaderItemId)
+    : eq(downloads.id, download.id);
+
+  await db
+    .update(downloads)
+    .set({ status: status.status, outputPath: resolvedOutputPath, error: status.error, updatedAt: new Date() })
+    .where(updateWhere);
+
+  if (status.status === "completed" && resolvedOutputPath) {
+    logger.info({ downloadId: download.id }, "download completed; queued import job");
+    await emitActivity("DOWNLOAD_COMPLETED", "Download completed", download.bookId);
+    await enqueueJob("IMPORT_DOWNLOAD", { downloadId: download.id });
+    return "completed";
+  }
+
+  if (status.status === "failed") {
+    logger.warn({ downloadId: download.id, error: status.error }, "download failed");
+    await emitActivity("ERROR", status.error ?? "Download failed", download.bookId);
+    return "failed";
+  }
+
+  return "pending";
+}
+
+async function findLocalDownloadPath(bookId: number) {
+  const base = path.resolve(env.DOWNLOADS_DIR, "downloads", "complete");
+  const segments = await fs.readdir(base);
+  const prefix = `${bookId}-`.toLowerCase();
+  for (const entry of segments) {
+    if (entry.toLowerCase().startsWith(prefix)) {
+      return path.join(base, entry);
+    }
+  }
+  return undefined;
 }
 
 async function handleImportDownload(job: Job) {
