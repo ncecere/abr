@@ -26,16 +26,21 @@ export async function claimDueJobs(limit: number) {
     .orderBy(asc(jobs.runAt))
     .limit(limit);
 
-  await Promise.all(
-    due.map((job) =>
-      db
-        .update(jobs)
-        .set({ status: "running", attempts: job.attempts + 1, updatedAt: new Date() })
-        .where(eq(jobs.id, job.id)),
-    ),
-  );
+  const claimed: Job[] = [];
 
-  return due;
+  for (const job of due) {
+    const [updated] = await db
+      .update(jobs)
+      .set({ status: "running", attempts: job.attempts + 1, updatedAt: new Date() })
+      .where(and(eq(jobs.id, job.id), eq(jobs.status, "queued")))
+      .returning();
+
+    if (updated) {
+      claimed.push({ ...job, status: "running", attempts: updated.attempts });
+    }
+  }
+
+  return claimed;
 }
 
 export async function markJobSucceeded(job: Job) {

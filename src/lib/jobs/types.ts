@@ -7,6 +7,14 @@ export type JobPayloadMap = {
   POLL_DOWNLOADS: Record<string, never>;
   IMPORT_DOWNLOAD: { downloadId: number };
   WATCH_DOWNLOAD: { downloadId: number };
+  MERGE_TRACKS: {
+    downloadId: number;
+    bookId: number;
+    bookTitle: string;
+    format: string;
+    files: string[];
+    extension: string;
+  };
 };
 
 export type JobPayload<TType extends JobType = JobType> = JobPayloadMap[TType];

@@ -34,9 +34,9 @@ export const POST = withRouteLogging("manualSearch#query", async (request: NextR
 
     setDependencySummary({ indexer_count: enabledIndexers.length });
 
-    const aggregated = await fetchReleasesAcrossIndexers(book, enabledIndexers, 10);
+    const { releases, failures } = await fetchReleasesAcrossIndexers(book, enabledIndexers, 10);
 
-    const results = aggregated.map(({ indexer, release }) => ({
+    const results = releases.map(({ indexer, release }) => ({
       id: `${indexer.id}-${release.guid}`,
       title: release.title,
       indexerName: indexer.name,
@@ -45,6 +45,10 @@ export const POST = withRouteLogging("manualSearch#query", async (request: NextR
       link: release.link,
       size: release.size,
     }));
+
+    if (failures.length === enabledIndexers.length && failures.length) {
+      return problem(502, "All indexers failed", failures.map((failure) => failure.name).join(", "));
+    }
 
     return success(results);
   } catch (error) {

@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { XMLParser } from "fast-xml-parser";
+import { env } from "@/config";
 import { RateLimiter } from "@/lib/services/rate-limiter";
 
 export type NewznabItem = {
@@ -26,6 +27,7 @@ export async function queryNewznab(
   },
   query: string,
   limit = 50,
+  timeoutMs = env.NEWZNAB_REQUEST_TIMEOUT_MS,
 ): Promise<NewznabItem[]> {
   if (!query.trim()) {
     return [];
@@ -48,17 +50,28 @@ export async function queryNewznab(
   }
 
   return indexerLimiter.schedule(async () => {
-    const response = await fetch(url.toString());
-    if (!response.ok) {
-      throw new Error(`Newznab search failed with ${response.status}`);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url.toString(), { signal: controller.signal });
+      if (!response.ok) {
+        throw new Error(`Newznab search failed with ${response.status}`);
+      }
+
+      const xml = await response.text();
+      const parsed = parser.parse(xml) as Record<string, any>;
+      const rawItems = parsed?.rss?.channel?.item ?? [];
+      const itemsArray = Array.isArray(rawItems) ? rawItems : rawItems ? [rawItems] : [];
+
+      return itemsArray.map((item) => normalizeItem(item));
+    } catch (error) {
+      if ((error as Error).name === "AbortError") {
+        throw new Error(`Newznab search timed out after ${timeoutMs}ms`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
     }
-
-    const xml = await response.text();
-    const parsed = parser.parse(xml) as Record<string, any>;
-    const rawItems = parsed?.rss?.channel?.item ?? [];
-    const itemsArray = Array.isArray(rawItems) ? rawItems : rawItems ? [rawItems] : [];
-
-    return itemsArray.map((item) => normalizeItem(item));
   });
 }
 

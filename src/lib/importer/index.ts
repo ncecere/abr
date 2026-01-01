@@ -3,11 +3,37 @@ import path from "node:path";
 import { createReadStream, createWriteStream } from "node:fs";
 import { eq } from "drizzle-orm";
 
+const FALLBACK_TRACK_EXTENSIONS = new Set([
+  "mp4",
+  "m4a",
+  "m4b",
+  "mp3",
+  "aac",
+  "flac",
+  "ogg",
+  "opus",
+  "wav",
+  "mkv",
+  "webm",
+]);
+
 import { db } from "@/db/client";
 import { bookFiles, books } from "@/db/schema";
 import { emitActivity } from "@/lib/activity";
 import { logger } from "@/lib/logger";
 import { getBookDirectory } from "@/lib/library/paths";
+
+export class MultiFileImportError extends Error {
+  constructor(
+    public readonly bookId: number,
+    public readonly bookTitle: string,
+    public readonly formatName: string,
+    public readonly files: string[],
+    public readonly extension: string,
+  ) {
+    super(`Multiple files detected for format ${formatName}`);
+  }
+}
 
 export async function importFileForBook(
   options: {
@@ -23,12 +49,32 @@ export async function importFileForBook(
   }
 
   const files = await collectFiles(options.downloadPath);
+  logger.info({
+    downloadPath: options.downloadPath,
+    fileCount: files.length,
+    sample: files.slice(0, 5),
+  }, "importer collected files");
   const normalizedFormats = options.formatExtensions.sort((a, b) => a.priority - b.priority);
 
   for (const format of normalizedFormats) {
-    const found = files.find((file) => format.extensions.some((ext) => file.toLowerCase().endsWith(`.${ext.toLowerCase()}`)));
-    if (!found) continue;
+    const matches = files.filter((file) =>
+      format.extensions.some((ext) => file.toLowerCase().endsWith(`.${ext.toLowerCase()}`)),
+    );
+    logger.info({
+      bookId: book.id,
+      format: format.name,
+      extensions: format.extensions,
+      matchCount: matches.length,
+    }, "importer format matches");
+    if (!matches.length) continue;
+    const orderedMatches = sortNaturally(matches);
 
+    if (orderedMatches.length > 1) {
+      const extension = path.extname(orderedMatches[0])?.replace(/^\./, "") || format.extensions[0] || "m4b";
+      throw new MultiFileImportError(book.id, book.title, format.name, orderedMatches, extension);
+    }
+
+    const found = orderedMatches[0];
     const destinationDirectory = getBookDirectory(
       JSON.parse(book.authorsJson ?? "[]"),
       book.title,
@@ -57,6 +103,22 @@ export async function importFileForBook(
     await emitActivity("BOOK_AVAILABLE", `${book.title} is now available`, book.id);
     logger.info({ bookId: book.id, destinationPath }, "imported audiobook");
     return destinationPath;
+  }
+
+  const fallbackMultiTrack = detectFallbackMultiTrack(files);
+  if (fallbackMultiTrack) {
+    logger.info({
+      bookId: book.id,
+      extension: fallbackMultiTrack.extension,
+      count: fallbackMultiTrack.files.length,
+    }, "importer fallback multi-track detected");
+    throw new MultiFileImportError(
+      book.id,
+      book.title,
+      `${fallbackMultiTrack.extension.toUpperCase()} (unconfigured)`,
+      fallbackMultiTrack.files,
+      fallbackMultiTrack.extension,
+    );
   }
 
   throw new Error("No matching files found for import");
@@ -107,6 +169,9 @@ async function collectFiles(targetPath: string) {
   for (const entry of entries) {
     const fullPath = path.join(targetPath, entry.name);
     if (entry.isDirectory()) {
+      if (entry.name.startsWith(".abr-")) {
+        continue;
+      }
       files.push(...(await collectFiles(fullPath)));
     } else {
       files.push(fullPath);
@@ -114,4 +179,27 @@ async function collectFiles(targetPath: string) {
   }
 
   return files;
+}
+
+function sortNaturally(values: string[]) {
+  return [...values].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
+}
+
+function detectFallbackMultiTrack(files: string[]) {
+  const groups = new Map<string, string[]>();
+  for (const file of files) {
+    const extension = path.extname(file)?.replace(/^\./, "").toLowerCase();
+    if (!extension || !FALLBACK_TRACK_EXTENSIONS.has(extension)) {
+      continue;
+    }
+    const group = groups.get(extension) ?? [];
+    group.push(file);
+    groups.set(extension, group);
+  }
+  for (const [extension, group] of groups.entries()) {
+    if (group.length > 1) {
+      return { extension, files: sortNaturally(group) };
+    }
+  }
+  return null;
 }

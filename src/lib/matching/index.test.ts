@@ -51,4 +51,22 @@ describe("scoreRelease", () => {
     );
     expect(result?.score).toBeGreaterThan(0.5);
   });
+
+  it("rejects releases with multi-part keywords", () => {
+    const result = scoreRelease(
+      baseBook,
+      { guid: "1", title: "Dune Part 01 of 05 M4B", link: "", indexerId: 1 },
+      formats,
+    );
+    expect(result).toBeNull();
+  });
+
+  it("rejects releases that are too small for the runtime", () => {
+    const result = scoreRelease(
+      baseBook,
+      { guid: "1", title: "Dune (Unabridged) M4B", link: "", indexerId: 1, size: 1000 },
+      formats,
+    );
+    expect(result).toBeNull();
+  });
 });

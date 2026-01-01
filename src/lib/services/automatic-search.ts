@@ -1,5 +1,5 @@
 import { db } from "@/db/client";
-import { books, indexers, formats, releases } from "@/db/schema";
+import { books, indexers, formats, releases, downloads } from "@/db/schema";
 import { emitActivity } from "@/lib/activity";
 import { enqueueJob } from "@/lib/jobs/queue";
 import { findBestReleaseMatch, MAX_RELEASES_PER_INDEXER } from "@/lib/services/release-search";
@@ -31,10 +31,39 @@ export async function runAutomaticSearch(bookId: number): Promise<AutomaticSearc
     orderBy: (fields, { asc }) => asc(fields.priority),
   });
 
-  const bestMatch = await findBestReleaseMatch(book, enabledIndexers, enabledFormats, MAX_RELEASES_PER_INDEXER);
+  const activeDownload = await db.query.downloads.findFirst({
+    where: (fields, { and, eq: eqOp, ne }) => and(eqOp(fields.bookId, book.id), ne(fields.status, "failed")),
+  });
+  if (activeDownload) {
+    await emitActivity("ERROR", `Download already in progress for ${book.title}`, book.id);
+    return { ok: false, status: 409, message: "Download already in progress" };
+  }
+
+  const { bestMatch, failures } = await findBestReleaseMatch(
+    book,
+    enabledIndexers,
+    enabledFormats,
+    MAX_RELEASES_PER_INDEXER,
+  );
   if (!bestMatch) {
-    await emitActivity("ERROR", `No release found for ${book.title}`, book.id);
+    if (failures.length === enabledIndexers.length && failures.length > 0) {
+      await emitActivity(
+        "ERROR",
+        `All indexers failed during search (${failures.map((failure) => failure.name).join(", ")})`,
+        book.id,
+      );
+    } else {
+      await emitActivity("ERROR", `No release found for ${book.title}`, book.id);
+    }
     return { ok: false, status: 404, message: `No release found for ${book.title}` };
+  }
+
+  const existingRelease = await db.query.releases.findFirst({
+    where: (fields, { and, eq: eqOp }) => and(eqOp(fields.bookId, book.id), eqOp(fields.guid, bestMatch.release.guid)),
+  });
+  if (existingRelease) {
+    await emitActivity("ERROR", `Release already queued for ${book.title}`, book.id);
+    return { ok: false, status: 409, message: "Release already queued" };
   }
 
   const [releaseRow] = await db
@@ -49,6 +78,14 @@ export async function runAutomaticSearch(bookId: number): Promise<AutomaticSearc
       score: bestMatch.score * 100,
     })
     .returning({ id: releases.id });
+
+  if (failures.length) {
+    await emitActivity(
+      "ERROR",
+      `Some indexers failed during search: ${failures.map((failure) => failure.name).join(", ")}`,
+      book.id,
+    );
+  }
 
   await emitActivity("RELEASE_FOUND", bestMatch.release.title, book.id);
   await enqueueJob("GRAB_RELEASE", { releaseId: releaseRow.id });

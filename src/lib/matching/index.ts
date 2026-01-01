@@ -22,12 +22,26 @@ export type MatchResult = {
   detectedFormat?: Format;
 };
 
+const MULTIPART_PATTERNS = [
+  /\bpart\s*\d+/i,
+  /\bdisc\s*\d+/i,
+  /\bcd\s*\d+/i,
+  /\btrack\s*\d+/i,
+  /\b\d{1,2}\s*of\s*\d{1,2}\b/i,
+  /\b\d{1,2}\/\d{1,2}\b/i,
+];
+const MIN_BYTES_PER_SECOND = 2000;
+
 export function scoreRelease(
   book: Book,
   release: ReleaseCandidate,
   formats: Format[],
 ): MatchResult | null {
-  if (isComicOrEbook(release.title)) {
+  if (isComicOrEbook(release.title) || isMultiPartTitle(release.title)) {
+    return null;
+  }
+
+  if (isReleaseTooSmall(book.runtimeSeconds, release.size)) {
     return null;
   }
 
@@ -51,6 +65,20 @@ export function scoreRelease(
     score: totalScore,
     detectedFormat,
   };
+}
+
+export function isMultiPartTitle(title: string) {
+  return MULTIPART_PATTERNS.some((pattern) => pattern.test(title));
+}
+
+function isReleaseTooSmall(runtimeSeconds?: number | null, size?: number | null) {
+  if (!runtimeSeconds || runtimeSeconds <= 0) {
+    return false;
+  }
+  if (!size || size <= 0) {
+    return false;
+  }
+  return size < runtimeSeconds * MIN_BYTES_PER_SECOND;
 }
 
 function normalize(value: string) {

@@ -6,6 +6,7 @@ ABR (Audiobook Robot) is a self-hosted workflow that pulls title metadata from A
 
 - 🔍 **Audible search** – query the Audible catalog from the Search view, inspect narrators/runtime/language, and add titles with one click.
 - 🤖 **Automated NZB hunts** – the job runner schedules `SEARCH_BOOK → GRAB_RELEASE → POLL_DOWNLOADS → IMPORT_DOWNLOAD` loops until every title is available.
+- 🎯 **Single-file focus** – release searches favor one-piece `.m4b` uploads, multi-part results are skipped, and importer guardrails requeue searches when only chapter dumps are available.
 - 📚 **Structured library** – authors/titles are sanitized into `audiobook/Author/Title`, cover art is fetched automatically, and importer logs capture every move.
 - ⚙️ **Configurable formats & clients** – manage audio formats (M4B/MP3/FLAC/OPUS), SABnzbd/NZBGet clients, and Newznab indexers directly in the dashboard.
 - 📒 **Activity tracing** – every notable event (book added, release found, download/import completed, errors) rolls into the Activity tab for auditing.
@@ -17,6 +18,7 @@ ABR (Audiobook Robot) is a self-hosted workflow that pulls title metadata from A
 - Audible API credentials capable of fetching `catalog:read` scopes (optional; public endpoints are used when omitted).
 - At least one Newznab-compatible audiobook indexer.
 - SABnzbd or NZBGet reachable from the server.
+- `ffmpeg` available in `PATH` for automatic merging of multi-track releases.
 
 ## Quick start
 
@@ -89,9 +91,9 @@ Open the **Settings** tab in the UI to manage everything outside of `.env`.
 ## Data flow
 
 1. **Search/Add** – The Search page queries Audible (`searchAudiobooks`) with built-in rate limiting. Adding a result stores the ASIN, narrators, runtime, release date, etc., using either the OAuth API (when configured) or the public Audible/Audnexus/Audimeta endpoints.
-2. **Automatic search** – The job runner iterates enabled Newznab indexers and forces audiobook categories (3030/3035/3036/3040) so results stay audio-focused without extra keywords.
+2. **Automatic search** – The job runner iterates enabled Newznab indexers, tries strict queries first (`m4b -part -disc -cd`), and ignores multi-part or suspiciously small releases before recording the best match.
 3. **Download** – Matching releases are queued to the active SABnzbd/NZBGet client under the `audiobooks` category. Polling watches for completion and resolves any remote-to-local path mappings.
-4. **Import** – Completed downloads are scanned for the highest-priority audio format, moved into `audiobook/{Author}/{Title}`, recorded in `book_files`, and marked `AVAILABLE`.
+4. **Import** – Completed downloads are scanned for the highest-priority audio format. Single-file releases are moved into `audiobook/{Author}/{Title}` and recorded in `book_files`. If multiple matching tracks are found, the importer queues a merge job that uses `ffmpeg` to concatenate the tracks before retrying the import; failures are logged and the search is requeued if merging cannot complete.
 
 ## Testing
 
