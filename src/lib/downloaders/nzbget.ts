@@ -60,6 +60,11 @@ export class NzbgetClient implements DownloadClientAdapter {
     return { status: "queued" };
   }
 
+  async cleanup(_id: string, _options?: { deleteFiles?: boolean }) {
+    // NZBGet cleanup is a no-op for now; downloads typically live outside the container
+    return;
+  }
+
   private async call(method: string, params: unknown[]) {
     const response = await fetch(this.endpoint, {
       method: "POST",

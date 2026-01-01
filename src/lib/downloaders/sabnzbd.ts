@@ -45,8 +45,7 @@ export class SabnzbdClient implements DownloadClientAdapter {
       };
     }
 
-    const history = await this.fetchHistory();
-    const historyItem = history.history?.slots?.find((entry: any) => entry.nzo_id === id);
+    const historyItem = await this.findHistoryItem(id);
     if (historyItem) {
       const status = historyItem.status === "Completed" ? "completed" : "failed";
       return {
@@ -63,8 +62,42 @@ export class SabnzbdClient implements DownloadClientAdapter {
     return this.request({ mode: "queue", start: "0", limit: "50" });
   }
 
-  private async fetchHistory() {
-    return this.request({ mode: "history", start: "0", limit: "50" });
+  private async findHistoryItem(id: string) {
+    const pageSize = 100;
+    const maxPages = 5;
+    for (let page = 0; page < maxPages; page++) {
+      const start = page * pageSize;
+      const history = await this.request({ mode: "history", start: String(start), limit: String(pageSize) });
+      const slots = history.history?.slots ?? [];
+      const match = slots.find((entry: any) => entry.nzo_id === id);
+      if (match) {
+        return match;
+      }
+      if (slots.length < pageSize) {
+        break;
+      }
+    }
+    return undefined;
+  }
+
+  async cleanup(id: string, options?: { deleteFiles?: boolean }) {
+    const url = new URL("/api", this.baseUrl);
+    url.searchParams.set("mode", "history");
+    url.searchParams.set("name", "delete");
+    url.searchParams.set("value", id);
+    url.searchParams.set("del_files", options?.deleteFiles ? "1" : "0");
+    url.searchParams.set("output", "json");
+    if (this.apiKey) {
+      url.searchParams.set("apikey", this.apiKey);
+    }
+    const response = await fetch(url.toString());
+    if (!response.ok) {
+      throw new Error(`SABnzbd cleanup failed (${response.status})`);
+    }
+    const payload = (await response.json()) as { status?: boolean };
+    if (payload?.status === false) {
+      throw new Error("SABnzbd cleanup rejected request");
+    }
   }
 
   private async request(params: Record<string, string>) {

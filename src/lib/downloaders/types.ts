@@ -19,4 +19,5 @@ export type DownloadStatusPayload = {
 export interface DownloadClientAdapter {
   enqueue(nzbUrl: string, meta: { title: string; bookId: number }): Promise<string>;
   getStatus(id: string): Promise<DownloadStatusPayload>;
+  cleanup?(id: string, options?: { deleteFiles?: boolean }): Promise<void>;
 }

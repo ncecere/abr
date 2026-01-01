@@ -21,6 +21,7 @@ import { enqueueJob } from "@/lib/jobs/queue";
 import { JobPayloadMap } from "@/lib/jobs/types";
 import { ensureLibraryRootSync } from "@/lib/runtime/bootstrap";
 import { runAutomaticSearch } from "@/lib/services/automatic-search";
+import { logger } from "@/lib/logger";
 
 
 export const jobHandlers: Record<JobType, (job: Job) => Promise<void>> = {
@@ -97,6 +98,8 @@ async function handleGrabRelease(job: Job) {
 }
 
 async function handlePollDownloads() {
+  logger.debug("polling download client statuses");
+
   const rawActive = await db
     .select()
     .from(downloads)
@@ -115,6 +118,7 @@ async function handlePollDownloads() {
   const pathMappingCache = new Map<number, DownloadClientPathMapping[]>();
 
   for (const download of deduped.reverse()) {
+    logger.debug({ downloadId: download.id, status: download.status }, "checking download status");
     const client = await db.query.downloadClients.findFirst({
       where: (fields, { eq }) => eq(fields.id, download.downloadClientId),
     });
@@ -157,14 +161,18 @@ async function handlePollDownloads() {
       .where(updateWhere);
 
     if (status.status === "completed" && resolvedOutputPath) {
+      logger.info({ downloadId: download.id }, "download completed; queued import job");
       await emitActivity("DOWNLOAD_COMPLETED", "Download completed", download.bookId);
       await enqueueJob("IMPORT_DOWNLOAD", { downloadId: download.id });
     }
 
     if (status.status === "failed") {
+      logger.warn({ downloadId: download.id, error: status.error }, "download failed");
       await emitActivity("ERROR", status.error ?? "Download failed", download.bookId);
     }
   }
+
+  logger.debug({ processed: deduped.length }, "poll downloads cycle complete");
 }
 
 async function handleImportDownload(job: Job) {
@@ -191,6 +199,30 @@ async function handleImportDownload(job: Job) {
       priority: format.priority,
     })),
   });
+
+  if (download.downloaderItemId) {
+    const client = await db.query.downloadClients.findFirst({
+      where: (fields, { eq }) => eq(fields.id, download.downloadClientId),
+    });
+    if (client) {
+      const adapter = createDownloadClient({
+        type: client.type as DownloaderType,
+        host: client.host,
+        port: client.port,
+        apiKey: client.apiKey ?? undefined,
+        username: client.username ?? undefined,
+        password: client.password ?? undefined,
+        category: client.category,
+      });
+      if (typeof adapter.cleanup === "function") {
+        try {
+          await adapter.cleanup(download.downloaderItemId, { deleteFiles: true });
+        } catch (error) {
+          logger.warn({ error, downloaderItemId: download.downloaderItemId }, "failed to cleanup download client history");
+        }
+      }
+    }
+  }
 }
 
 function parsePayload<TType extends JobType>(job: Job, type: TType): JobPayloadMap[TType] {

@@ -74,6 +74,13 @@ export function withRouteLogging<Context = { params?: unknown }>(
       finished: false,
     };
 
+    const abortListener = () => {
+      if (state.finished) return;
+      logger.warn({ requestId }, "request aborted by client");
+      finalizeWideEvent(state, 499, new Error("Client aborted"));
+    };
+    request.signal.addEventListener("abort", abortListener);
+
     return storage.run(state, async () => {
       try {
         const response = await handler(request, context);
@@ -83,6 +90,8 @@ export function withRouteLogging<Context = { params?: unknown }>(
       } catch (error) {
         finalizeWideEvent(state, 500, error as Error);
         throw error;
+      } finally {
+        request.signal.removeEventListener("abort", abortListener);
       }
     });
   };
