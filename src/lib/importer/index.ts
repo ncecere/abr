@@ -21,7 +21,7 @@ import { db } from "@/db/client";
 import { bookFiles, books } from "@/db/schema";
 import { emitActivity } from "@/lib/activity";
 import { logger } from "@/lib/logger";
-import { getBookDirectory } from "@/lib/library/paths";
+import { getBookDirectory, getMergedFileName } from "@/lib/library/paths";
 
 export class MultiFileImportError extends Error {
   constructor(
@@ -47,6 +47,8 @@ export async function importFileForBook(
   if (!book) {
     throw new Error(`Book ${options.bookId} not found`);
   }
+
+  const authors = JSON.parse(book.authorsJson ?? "[]") as string[];
 
   const files = await collectFiles(options.downloadPath);
   logger.info({
@@ -76,15 +78,25 @@ export async function importFileForBook(
 
     const found = orderedMatches[0];
     const destinationDirectory = getBookDirectory(
-      JSON.parse(book.authorsJson ?? "[]"),
+      authors,
       book.title,
       options.libraryRoot,
     );
 
     await fs.mkdir(destinationDirectory, { recursive: true });
-    const destinationPath = path.join(destinationDirectory, path.basename(found));
+    const extension = path.extname(found)?.replace(/^\./, "") || format.extensions[0] || "m4b";
+    let destinationPath = path.join(destinationDirectory, getMergedFileName(authors, book.title, extension));
+    let copyCounter = 1;
+    while (await fileExists(destinationPath)) {
+      destinationPath = path.join(
+        destinationDirectory,
+        getMergedFileName(authors, `${book.title}-${copyCounter}`, extension),
+      );
+      copyCounter += 1;
+    }
 
     await moveFile(found, destinationPath);
+
 
     const stats = await fs.stat(destinationPath);
     await db.insert(bookFiles).values({
@@ -202,4 +214,13 @@ function detectFallbackMultiTrack(files: string[]) {
     }
   }
   return null;
+}
+
+async function fileExists(target: string) {
+  try {
+    await fs.access(target);
+    return true;
+  } catch {
+    return false;
+  }
 }

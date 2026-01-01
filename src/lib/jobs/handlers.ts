@@ -2,7 +2,6 @@ import { asc, desc, eq, ne } from "drizzle-orm";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import slugify from "@sindresorhus/slugify";
 import { env } from "@/config";
 import { db } from "@/db/client";
 import {
@@ -22,7 +21,7 @@ import { DownloaderType, JobType } from "@/lib/domain";
 import { importFileForBook, MultiFileImportError } from "@/lib/importer";
 import { createDownloadClient } from "@/lib/downloaders";
 import { listDownloadClientPathMappings, applyDownloadClientPathMappings } from "@/lib/services/download-clients";
-import { getBookDirectory, getMergedFileName } from "@/lib/library/paths";
+import { getMergedFileName } from "@/lib/library/paths";
 import { enqueueJob } from "@/lib/jobs/queue";
 import { JobPayloadMap } from "@/lib/jobs/types";
 import { ensureLibraryRootSync } from "@/lib/runtime/bootstrap";
@@ -412,18 +411,20 @@ async function handleMergeTracks(job: Job) {
     return;
   }
 
+  const tempOutputDir = await fs.mkdtemp(path.join(os.tmpdir(), "abr-merged-output-"));
   const book = await db.query.books.findFirst({ where: (fields, { eq }) => eq(fields.id, payload.bookId) });
-  const settings = await db.query.settings.findFirst();
-  if (!book || !settings) {
-    logger.error({ downloadId: download.id }, "merge job missing book or settings context");
-    return;
+  const authors = JSON.parse(book?.authorsJson ?? "[]") as string[];
+  const baseTitle = payload.bookTitle || book?.title || `book-${payload.bookId}`;
+  let outputPath = path.join(tempOutputDir, getMergedFileName(authors, baseTitle, payload.extension));
+  let counter = 1;
+  while (await pathExists(outputPath)) {
+    const nextTitle = `${baseTitle}-${counter}`;
+    outputPath = path.join(tempOutputDir, getMergedFileName(authors, nextTitle, payload.extension));
+    counter += 1;
   }
 
-  const tempOutputDir = await fs.mkdtemp(path.join(os.tmpdir(), "abr-merged-output-"));
-  const tempOutputPath = path.join(tempOutputDir, getMergedFileName(JSON.parse(book.authorsJson ?? "[]"), book.title, payload.extension));
-
   try {
-    await mergeTracksWithFfmpeg(payload.files, tempOutputPath);
+    await mergeTracksWithFfmpeg(payload.files, outputPath);
   } catch (error) {
     logger.error({ downloadId: download.id, error }, "failed to merge tracks");
     await emitActivity("ERROR", `Failed to merge tracks: ${(error as Error).message}`, payload.bookId);
@@ -434,21 +435,6 @@ async function handleMergeTracks(job: Job) {
     await enqueueJob("SEARCH_BOOK", { bookId: payload.bookId }, new Date(Date.now() + 60_000));
     return;
   }
-
-  await db
-    .update(downloads)
-    .set({ outputPath: tempOutputPath, status: "downloading", error: null, updatedAt: new Date() })
-    .where(eq(downloads.id, download.id));
-
-    await enqueueJob("SEARCH_BOOK", { bookId: payload.bookId }, new Date(Date.now() + 60_000));
-    return;
-  }
-
-  await Promise.all(
-    payload.files
-      .filter((file) => file !== outputPath)
-      .map((file) => fs.unlink(file).catch(() => {})),
-  );
 
   await db
     .update(downloads)
