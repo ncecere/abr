@@ -312,9 +312,10 @@ async function handleImportDownload(job: Job) {
   if (mergeQueued) {
     return;
   }
-
+ 
+  let importedFilePath: string | null = null;
   try {
-    await importFileForBook({
+    importedFilePath = await importFileForBook({
       bookId: download.bookId,
       downloadPath: importPath,
       libraryRoot,
@@ -331,8 +332,9 @@ async function handleImportDownload(job: Job) {
     }
     throw error;
   }
-
+ 
   if (download.downloaderItemId) {
+
     const cleanupClient = client ?? (download.downloadClientId
       ? await db.query.downloadClients.findFirst({ where: (fields, { eq }) => eq(fields.id, download.downloadClientId) })
       : null);
@@ -355,6 +357,16 @@ async function handleImportDownload(job: Job) {
       }
     }
   }
+ 
+  await db
+    .update(downloads)
+    .set({
+      status: "completed",
+      outputPath: importedFilePath ?? download.outputPath,
+      error: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(downloads.id, download.id));
 }
 
 type PreflightDeps = {
