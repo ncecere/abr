@@ -3,10 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "predev": "npm run db:migrate",
     "dev": "LOG_LEVEL=debug next dev",
     "build": "next build",
-    "prestart": "npm run db:migrate",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
