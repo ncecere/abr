@@ -8,6 +8,12 @@ export const settingsUpdateSchema = z.object({
   activeDownloaderClientId: z.number().int().positive().nullable(),
 });
 
+export const securitySettingsSchema = z.object({
+  authEnabled: z.boolean(),
+  username: z.string().min(1).optional(),
+  password: z.string().min(8).optional(),
+});
+
 export const indexerPayloadSchema = z.object({
   name: z.string().min(1),
   baseUrl: z.string().url(),
@@ -48,6 +54,7 @@ export const addBookSchema = z.object({
 });
 
 export type SettingsUpdateInput = z.infer<typeof settingsUpdateSchema>;
+export type SecuritySettingsInput = z.infer<typeof securitySettingsSchema>;
 export type IndexerInput = z.infer<typeof indexerPayloadSchema>;
 export type FormatInput = z.infer<typeof formatPayloadSchema>;
 export type DownloadClientInput = z.infer<typeof downloadClientPayloadSchema>;

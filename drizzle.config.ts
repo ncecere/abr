@@ -8,6 +8,6 @@ export default defineConfig({
   schema: "./src/db/schema.ts",
   out: "./drizzle",
   dbCredentials: {
-    url: process.env.DATABASE_PATH ?? "var/data/ebr.sqlite",
+    url: process.env.DATABASE_PATH ?? "var/data/abr.sqlite",
   },
 });

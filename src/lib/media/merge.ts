@@ -30,6 +30,11 @@ export async function mergeTracksWithFfmpeg(files: string[], outputPath: string)
 
     try {
       await runFfmpeg([
+        "-hide_banner",
+        "-loglevel",
+        "warning",
+        "-fflags",
+        "+genpts",
         "-f",
         "concat",
         "-safe",
@@ -38,6 +43,8 @@ export async function mergeTracksWithFfmpeg(files: string[], outputPath: string)
         manifestPath,
         "-c",
         "copy",
+        "-avoid_negative_ts",
+        "make_zero",
         outputPath,
       ]);
     } finally {

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   DropdownMenu,
@@ -79,6 +80,16 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
     searchIntervalMinutes: settings.searchIntervalMinutes,
     activeDownloaderClientId: settings.activeDownloaderClientId ?? undefined,
   });
+  const [securityForm, setSecurityForm] = useState({
+    authEnabled: Boolean(settings.authEnabled),
+    username: settings.authUsername ?? "",
+    password: "",
+    confirmPassword: "",
+  });
+  const [hasConfiguredPassword, setHasConfiguredPassword] = useState(Boolean(settings.authPasswordHash));
+  const [securityStatus, setSecurityStatus] = useState<string | null>(null);
+  const [apiKeyStatus, setApiKeyStatus] = useState<string | null>(null);
+  const [apiKeyValue, setApiKeyValue] = useState(settings.apiKey ?? "");
   const [indexers, setIndexers] = useState(initialIndexers);
   const [formats, setFormats] = useState(initialFormats);
   const [downloadClients, setDownloadClients] = useState(initialClients);
@@ -365,6 +376,93 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
       body: JSON.stringify(form),
     });
     setStatus(response.ok ? "Settings saved" : "Failed to save settings");
+  };
+
+  const handleSecuritySubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setSecurityStatus("Saving security settings…");
+    setApiKeyStatus(null);
+
+    if (securityForm.authEnabled) {
+      if (!securityForm.username.trim()) {
+        setSecurityStatus("Username is required");
+        return;
+      }
+      if (!securityForm.password && !hasConfiguredPassword) {
+        setSecurityStatus("Password is required the first time you enable authentication");
+        return;
+      }
+      if (securityForm.password && securityForm.password !== securityForm.confirmPassword) {
+        setSecurityStatus("Passwords do not match");
+        return;
+      }
+    }
+
+    const payload: Record<string, unknown> = {
+      authEnabled: securityForm.authEnabled,
+      username: securityForm.username.trim(),
+    };
+    if (securityForm.password) {
+      payload.password = securityForm.password;
+    }
+
+    try {
+      const response = await fetch("/api/settings/security", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.detail ?? "Failed to update security settings");
+      }
+      const { data } = await response.json();
+      setSecurityForm((prev) => ({
+        ...prev,
+        authEnabled: Boolean(data.authEnabled),
+        username: data.username ?? prev.username,
+        password: "",
+        confirmPassword: "",
+      }));
+      if (securityForm.password) {
+        setHasConfiguredPassword(true);
+      }
+      setApiKeyValue(data.apiKey ?? "");
+      setSecurityStatus("Security settings saved");
+      if (data.requireReauth) {
+        window.location.href = "/login";
+      }
+    } catch (error) {
+      setSecurityStatus(error instanceof Error ? error.message : "Failed to update security settings");
+    }
+  };
+
+  const handleRotateApiKey = async () => {
+    setApiKeyStatus("Generating API key…");
+    try {
+      const response = await fetch("/api/settings/security/api-key", { method: "POST" });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.detail ?? "Failed to rotate API key");
+      }
+      const { data } = await response.json();
+      setApiKeyValue(data.apiKey ?? "");
+      setApiKeyStatus("API key rotated");
+    } catch (error) {
+      setApiKeyStatus(error instanceof Error ? error.message : "Failed to rotate API key");
+    }
+  };
+
+  const handleCopyApiKey = async () => {
+    if (!apiKeyValue) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(apiKeyValue);
+      setApiKeyStatus("API key copied to clipboard");
+    } catch {
+      setApiKeyStatus("Unable to copy API key");
+    }
   };
 
   const openCreateFormatModal = () => {
@@ -838,6 +936,101 @@ export function SettingsPanel({ settings, indexers: initialIndexers, formats: in
                 {status && <span className="text-sm text-muted-foreground">{status}</span>}
               </div>
             </form>
+            <Separator className="my-8" />
+            <div className="space-y-2">
+              <h3 className="text-lg font-semibold">Security</h3>
+              <p className="text-sm text-muted-foreground">
+                Enable single-user authentication and manage the API key used for integrations.
+              </p>
+            </div>
+            <form onSubmit={handleSecuritySubmit} className="mt-4 grid gap-4 md:grid-cols-2">
+              <div className="md:col-span-2 flex items-center gap-3 rounded-lg border border-dashed border-muted-foreground/30 px-3 py-2">
+                <input
+                  id="auth-enabled"
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={securityForm.authEnabled}
+                  onChange={(event) =>
+                    setSecurityForm((prev) => ({
+                      ...prev,
+                      authEnabled: event.target.checked,
+                    }))
+                  }
+                />
+                <Label htmlFor="auth-enabled" className="cursor-pointer">
+                  Require login to access the dashboard
+                </Label>
+              </div>
+              <div>
+                <Label htmlFor="auth-username">Username</Label>
+                <Input
+                  id="auth-username"
+                  value={securityForm.username}
+                  onChange={(event) =>
+                    setSecurityForm((prev) => ({
+                      ...prev,
+                      username: event.target.value,
+                    }))
+                  }
+                  placeholder="admin"
+                />
+              </div>
+              <div>
+                <Label htmlFor="auth-password">Password</Label>
+                <Input
+                  id="auth-password"
+                  type="password"
+                  value={securityForm.password}
+                  onChange={(event) =>
+                    setSecurityForm((prev) => ({
+                      ...prev,
+                      password: event.target.value,
+                    }))
+                  }
+                  placeholder={securityForm.authEnabled ? "••••••••" : "Set a password to enable auth"}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Leave blank to keep the existing password.
+                </p>
+              </div>
+              <div>
+                <Label htmlFor="auth-confirm">Confirm password</Label>
+                <Input
+                  id="auth-confirm"
+                  type="password"
+                  value={securityForm.confirmPassword}
+                  onChange={(event) =>
+                    setSecurityForm((prev) => ({
+                      ...prev,
+                      confirmPassword: event.target.value,
+                    }))
+                  }
+                  placeholder="Repeat the password"
+                />
+              </div>
+              <div className="md:col-span-2 flex items-center gap-4">
+                <Button type="submit">Save security settings</Button>
+                {securityStatus && <span className="text-sm text-muted-foreground">{securityStatus}</span>}
+              </div>
+            </form>
+            <div className="mt-6 space-y-2">
+              <Label>API key</Label>
+              <p className="text-xs text-muted-foreground">
+                Include this key via the <code className="font-mono">X-API-Key</code> header when calling the HTTP API.
+              </p>
+              <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                <Input readOnly value={apiKeyValue || "Authentication disabled"} className="md:flex-1" />
+                <div className="flex gap-2">
+                  <Button type="button" variant="secondary" disabled={!securityForm.authEnabled || !apiKeyValue} onClick={handleCopyApiKey}>
+                    Copy
+                  </Button>
+                  <Button type="button" onClick={handleRotateApiKey} disabled={!securityForm.authEnabled}>
+                    Rotate
+                  </Button>
+                </div>
+              </div>
+              {apiKeyStatus && <span className="text-sm text-muted-foreground">{apiKeyStatus}</span>}
+            </div>
           </CardContent>
         </Card>
       )}

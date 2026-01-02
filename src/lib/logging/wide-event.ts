@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
 import type { Job } from "@/db/schema";
 import { env } from "@/config";
+import { enforceApiAuth } from "@/lib/auth/api";
 import { logger } from "@/lib/logger";
 
 export type WideEvent = {
@@ -47,6 +48,7 @@ const storage = new AsyncLocalStorage<WideEventState>();
 export function withRouteLogging<Context = { params?: unknown }>(
   routeName: string,
   handler: RouteHandler<Context>,
+  options?: { allowAnonymous?: boolean },
 ): RouteHandler<Context> {
   return async (request, context) => {
     const requestId = request.headers.get("x-request-id") ?? randomUUID();
@@ -83,6 +85,12 @@ export function withRouteLogging<Context = { params?: unknown }>(
 
     return storage.run(state, async () => {
       try {
+        const authResponse = await enforceApiAuth(request, options?.allowAnonymous ?? false);
+        if (authResponse) {
+          finalizeWideEvent(state, authResponse.status ?? 401);
+          authResponse.headers.set("x-request-id", requestId);
+          return authResponse;
+        }
         const response = await handler(request, context);
         finalizeWideEvent(state, response.status ?? 200);
         response.headers.set("x-request-id", requestId);

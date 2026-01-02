@@ -53,6 +53,10 @@ export const settings = sqliteTable("settings", {
   restartRequired: integer("restart_required", { mode: "boolean" })
     .notNull()
     .default(true),
+  authEnabled: integer("auth_enabled", { mode: "boolean" }).notNull().default(false),
+  authUsername: text("auth_username"),
+  authPasswordHash: text("auth_password_hash"),
+  apiKey: text("api_key"),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`CURRENT_TIMESTAMP`),
@@ -205,6 +209,22 @@ export const downloads = sqliteTable("downloads", {
     .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
 });
 
+export const authSessions = sqliteTable(
+  "auth_sessions",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    token: text("token").notNull(),
+    userAgent: text("user_agent"),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => ({
+    tokenIdx: uniqueIndex("auth_sessions_token_idx").on(table.token),
+  }),
+);
+
 export type Settings = InferSelectModel<typeof settings>;
 export type InsertSettings = InferInsertModel<typeof settings>;
 export type Book = InferSelectModel<typeof books>;
@@ -217,3 +237,4 @@ export type ActivityEvent = InferSelectModel<typeof activityEvents>;
 export type Job = InferSelectModel<typeof jobs>;
 export type Release = InferSelectModel<typeof releases>;
 export type Download = InferSelectModel<typeof downloads>;
+export type AuthSession = InferSelectModel<typeof authSessions>;

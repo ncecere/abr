@@ -7,11 +7,15 @@ import { withRouteLogging } from "@/lib/logging/wide-event";
 
 export const runtime = "nodejs";
 
-export const GET = withRouteLogging("health#show", async (_request: NextRequest) => {
-  await initServerRuntime();
-  await db.query.settings.findFirst();
-  return success({
-    database: "ok",
-    jobRunner: isJobRunnerRunning() ? "running" : "starting",
-  });
-});
+export const GET = withRouteLogging(
+  "health#show",
+  async (_request: NextRequest) => {
+    await initServerRuntime();
+    await db.query.settings.findFirst();
+    return success({
+      database: "ok",
+      jobRunner: isJobRunnerRunning() ? "running" : "starting",
+    });
+  },
+  { allowAnonymous: true },
+);
